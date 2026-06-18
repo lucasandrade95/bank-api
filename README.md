@@ -1,0 +1,70 @@
+# Bank API
+
+REST API de operações bancárias (contas e transações) construída em **Java 21 + Spring Boot 3**.
+Projeto de portfólio com foco em backend bancário: regras de negócio financeiras, testes automatizados, documentação OpenAPI e containerização.
+
+> Em construção — evoluído com commits diários. Acompanhe o [roadmap](#roadmap).
+
+## Stack
+
+- Java 21, Spring Boot 3.3
+- Spring Web, Spring Data JPA, Bean Validation
+- H2 (dev) — PostgreSQL planejado
+- springdoc-openapi (Swagger UI)
+- JUnit 5, MockMvc
+- Docker (multi-stage), GitHub Actions (CI)
+
+## Como rodar
+
+```bash
+# testes
+mvn clean verify
+
+# subir a aplicação (porta 8080)
+mvn spring-boot:run
+
+# ou via Docker
+docker build -t bank-api .
+docker run -p 8080:8080 bank-api
+```
+
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- H2 console: http://localhost:8080/h2-console (JDBC `jdbc:h2:mem:bankdb`, user `sa`)
+
+## Endpoints (v1)
+
+| Método | Rota                       | Descrição                |
+|--------|----------------------------|--------------------------|
+| POST   | `/api/v1/accounts`         | Cria conta (saldo zero)  |
+| GET    | `/api/v1/accounts/{id}`    | Consulta conta por id    |
+| GET    | `/api/v1/accounts/health`  | Health check             |
+
+Exemplo:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/accounts \
+  -H "Content-Type: application/json" \
+  -d '{"ownerName":"Lucas Andrade","document":"12345678901"}'
+```
+
+## Decisões de design
+
+- **Saldo em `BigDecimal`** (nunca `double`) — evita erro de arredondamento em dinheiro.
+- **DTOs (records) separados da entidade** — entidade JPA não vaza pela API.
+- **Tratamento de erro centralizado** (`@RestControllerAdvice`) com corpo de erro padronizado.
+- **Arquitetura em camadas** controller → service → repository.
+
+## Roadmap
+
+- [x] Domínio de contas (criar/consultar) + validação + testes
+- [ ] Depósito e saque com regras de saldo
+- [ ] Transferência entre contas (transacional, atômica)
+- [ ] Extrato / histórico de transações
+- [ ] Autenticação JWT (Spring Security)
+- [ ] Migração para PostgreSQL + Flyway
+- [ ] Observabilidade (Actuator, métricas)
+
+## Autor
+
+**Lucas Mendes de Andrade** — Engenheiro de Software backend (Java/Spring)
+[LinkedIn](https://www.linkedin.com/in/devlucasandrade/) · [GitHub](https://github.com/lucasandrade95)

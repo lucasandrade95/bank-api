@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.account;
 
+import com.lucasandrade.bankapi.shared.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -45,6 +46,33 @@ public class Account {
         this.document = document;
         this.balance = BigDecimal.ZERO;
         this.createdAt = Instant.now();
+    }
+
+    /**
+     * Credita um valor no saldo. O valor deve ser positivo — regra reforcada
+     * aqui no dominio, independente da validacao de entrada.
+     */
+    public void deposit(BigDecimal amount) {
+        requirePositive(amount);
+        this.balance = this.balance.add(amount);
+    }
+
+    /**
+     * Debita um valor do saldo. Rejeita saque sem saldo suficiente
+     * (sem cheque especial nesta versao).
+     */
+    public void withdraw(BigDecimal amount) {
+        requirePositive(amount);
+        if (balance.compareTo(amount) < 0) {
+            throw new BusinessException("Saldo insuficiente");
+        }
+        this.balance = this.balance.subtract(amount);
+    }
+
+    private static void requirePositive(BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new BusinessException("Valor da operacao deve ser positivo");
+        }
     }
 
     public UUID getId() {

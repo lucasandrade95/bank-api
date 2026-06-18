@@ -2,6 +2,7 @@ package com.lucasandrade.bankapi.account;
 
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
+import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +40,18 @@ public class AccountController {
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(service.findById(id));
+    }
+
+    @PostMapping("/{id}/deposit")
+    public ResponseEntity<AccountResponse> deposit(@PathVariable UUID id,
+                                                   @Valid @RequestBody MoneyOperationRequest request) {
+        return ResponseEntity.ok(service.deposit(id, request));
+    }
+
+    @PostMapping("/{id}/withdraw")
+    public ResponseEntity<AccountResponse> withdraw(@PathVariable UUID id,
+                                                    @Valid @RequestBody MoneyOperationRequest request) {
+        return ResponseEntity.ok(service.withdraw(id, request));
     }
 
     @GetMapping("/health")

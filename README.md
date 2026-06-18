@@ -35,9 +35,11 @@ docker run -p 8080:8080 bank-api
 
 | Método | Rota                       | Descrição                |
 |--------|----------------------------|--------------------------|
-| POST   | `/api/v1/accounts`         | Cria conta (saldo zero)  |
-| GET    | `/api/v1/accounts/{id}`    | Consulta conta por id    |
-| GET    | `/api/v1/accounts/health`  | Health check             |
+| POST   | `/api/v1/accounts`              | Cria conta (saldo zero)       |
+| GET    | `/api/v1/accounts/{id}`         | Consulta conta por id         |
+| POST   | `/api/v1/accounts/{id}/deposit` | Deposita valor na conta       |
+| POST   | `/api/v1/accounts/{id}/withdraw`| Saca valor (valida saldo)     |
+| GET    | `/api/v1/accounts/health`       | Health check                  |
 
 Exemplo:
 
@@ -57,7 +59,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 ## Roadmap
 
 - [x] Domínio de contas (criar/consultar) + validação + testes
-- [ ] Depósito e saque com regras de saldo
+- [x] Depósito e saque com regras de saldo
 - [ ] Transferência entre contas (transacional, atômica)
 - [ ] Extrato / histórico de transações
 - [ ] Autenticação JWT (Spring Security)

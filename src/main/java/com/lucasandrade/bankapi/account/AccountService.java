@@ -2,6 +2,7 @@ package com.lucasandrade.bankapi.account;
 
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
+import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import org.springframework.stereotype.Service;
@@ -29,8 +30,25 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public AccountResponse findById(UUID id) {
-        Account account = repository.findById(id)
+        return AccountResponse.from(getAccount(id));
+    }
+
+    @Transactional
+    public AccountResponse deposit(UUID id, MoneyOperationRequest request) {
+        Account account = getAccount(id);
+        account.deposit(request.amount());
+        return AccountResponse.from(repository.save(account));
+    }
+
+    @Transactional
+    public AccountResponse withdraw(UUID id, MoneyOperationRequest request) {
+        Account account = getAccount(id);
+        account.withdraw(request.amount());
+        return AccountResponse.from(repository.save(account));
+    }
+
+    private Account getAccount(UUID id) {
+        return repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Conta nao encontrada: " + id));
-        return AccountResponse.from(account);
     }
 }

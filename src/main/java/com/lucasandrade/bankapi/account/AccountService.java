@@ -3,6 +3,8 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
+import com.lucasandrade.bankapi.account.dto.TransferRequest;
+import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,27 @@ public class AccountService {
         Account account = getAccount(id);
         account.withdraw(request.amount());
         return AccountResponse.from(repository.save(account));
+    }
+
+    /**
+     * Transfere um valor da conta origem para a conta destino de forma atomica:
+     * debito e credito acontecem na mesma transacao, entao qualquer falha
+     * (ex.: saldo insuficiente) faz rollback total e nenhum saldo e alterado.
+     */
+    @Transactional
+    public TransferResponse transfer(UUID sourceId, TransferRequest request) {
+        if (sourceId.equals(request.destinationAccountId())) {
+            throw new BusinessException("Conta origem e destino devem ser diferentes");
+        }
+        Account source = getAccount(sourceId);
+        Account destination = getAccount(request.destinationAccountId());
+
+        source.withdraw(request.amount());
+        destination.deposit(request.amount());
+
+        repository.save(source);
+        repository.save(destination);
+        return TransferResponse.of(source, destination, request.amount());
     }
 
     private Account getAccount(UUID id) {

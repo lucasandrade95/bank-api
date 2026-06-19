@@ -127,4 +127,100 @@ class AccountControllerTest {
                         .content("{ \"amount\": 10.00 }"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void transfer_movesFundsAtomically_returns200() throws Exception {
+        String source = createAccount("55555555555");
+        String destination = createAccount("66666666666");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 30.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source.balance").value(70.00))
+                .andExpect(jsonPath("$.destination.balance").value(30.00))
+                .andExpect(jsonPath("$.amount").value(30.00));
+    }
+
+    @Test
+    void transfer_insufficientBalance_returns422_andRollsBack() throws Exception {
+        String source = createAccount("77777777777");
+        String destination = createAccount("88888888888");
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 50.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+
+        // rollback: nenhuma conta foi creditada
+        mockMvc.perform(get("/api/v1/accounts/{id}", destination))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(0));
+    }
+
+    @Test
+    void transfer_toSameAccount_returns422() throws Exception {
+        String id = createAccount("99999999999");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 10.00 }
+                """.formatted(id);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void transfer_destinationNotFound_returns404() throws Exception {
+        String source = createAccount("10101010101");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "00000000-0000-0000-0000-000000000000", "amount": 10.00 }
+                """;
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void transfer_negativeAmount_returns400() throws Exception {
+        String source = createAccount("12121212121");
+        String destination = createAccount("13131313131");
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": -10.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
 }

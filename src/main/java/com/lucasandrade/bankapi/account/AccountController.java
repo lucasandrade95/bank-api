@@ -3,6 +3,7 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
+import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -60,6 +62,11 @@ public class AccountController {
     public ResponseEntity<TransferResponse> transfer(@PathVariable UUID id,
                                                      @Valid @RequestBody TransferRequest request) {
         return ResponseEntity.ok(service.transfer(id, request));
+    }
+
+    @GetMapping("/{id}/statement")
+    public ResponseEntity<List<TransactionResponse>> statement(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.statement(id));
     }
 
     @GetMapping("/health")

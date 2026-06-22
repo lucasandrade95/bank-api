@@ -40,6 +40,7 @@ docker run -p 8080:8080 bank-api
 | POST   | `/api/v1/accounts/{id}/deposit` | Deposita valor na conta       |
 | POST   | `/api/v1/accounts/{id}/withdraw`| Saca valor (valida saldo)     |
 | POST   | `/api/v1/accounts/{id}/transfer`| Transfere para outra conta (atômico) |
+| GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta (lançamentos)|
 | GET    | `/api/v1/accounts/health`       | Health check                  |
 
 Exemplo:
@@ -62,7 +63,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - [x] Domínio de contas (criar/consultar) + validação + testes
 - [x] Depósito e saque com regras de saldo
 - [x] Transferência entre contas (transacional, atômica)
-- [ ] Extrato / histórico de transações
+- [x] Extrato / histórico de transações
 - [ ] Autenticação JWT (Spring Security)
 - [ ] Migração para PostgreSQL + Flyway
 - [ ] Observabilidade (Actuator, métricas)

@@ -3,6 +3,7 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
+import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
@@ -10,15 +11,19 @@ import com.lucasandrade.bankapi.shared.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Service
 public class AccountService {
 
     private final AccountRepository repository;
+    private final TransactionRepository transactionRepository;
 
-    public AccountService(AccountRepository repository) {
+    public AccountService(AccountRepository repository, TransactionRepository transactionRepository) {
         this.repository = repository;
+        this.transactionRepository = transactionRepository;
     }
 
     @Transactional
@@ -39,14 +44,18 @@ public class AccountService {
     public AccountResponse deposit(UUID id, MoneyOperationRequest request) {
         Account account = getAccount(id);
         account.deposit(request.amount());
-        return AccountResponse.from(repository.save(account));
+        repository.save(account);
+        record(account, TransactionType.DEPOSIT, request.amount(), null);
+        return AccountResponse.from(account);
     }
 
     @Transactional
     public AccountResponse withdraw(UUID id, MoneyOperationRequest request) {
         Account account = getAccount(id);
         account.withdraw(request.amount());
-        return AccountResponse.from(repository.save(account));
+        repository.save(account);
+        record(account, TransactionType.WITHDRAWAL, request.amount(), null);
+        return AccountResponse.from(account);
     }
 
     /**
@@ -67,7 +76,24 @@ public class AccountService {
 
         repository.save(source);
         repository.save(destination);
+        record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
+        record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
         return TransferResponse.of(source, destination, request.amount());
+    }
+
+    /** Extrato da conta (lancamentos do mais recente para o mais antigo). */
+    @Transactional(readOnly = true)
+    public List<TransactionResponse> statement(UUID id) {
+        getAccount(id); // garante 404 para conta inexistente
+        return transactionRepository.findByAccountIdOrderByCreatedAtDescIdDesc(id).stream()
+                .map(TransactionResponse::from)
+                .toList();
+    }
+
+    /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */
+    private void record(Account account, TransactionType type, BigDecimal amount, UUID counterpartyId) {
+        transactionRepository.save(
+                new Transaction(account.getId(), type, amount, account.getBalance(), counterpartyId));
     }
 
     private Account getAccount(UUID id) {

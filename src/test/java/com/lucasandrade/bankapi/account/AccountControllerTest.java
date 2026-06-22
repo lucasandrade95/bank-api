@@ -223,4 +223,105 @@ class AccountControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void statement_newAccount_returnsEmptyList() throws Exception {
+        String id = createAccount("14141414141");
+
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void statement_recordsDepositAndWithdrawal_mostRecentFirst() throws Exception {
+        String id = createAccount("15151515151");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 30.00 }"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                // mais recente primeiro: o saque
+                .andExpect(jsonPath("$[0].type").value("WITHDRAWAL"))
+                .andExpect(jsonPath("$[0].amount").value(30.00))
+                .andExpect(jsonPath("$[0].balanceAfter").value(70.00))
+                .andExpect(jsonPath("$[1].type").value("DEPOSIT"))
+                .andExpect(jsonPath("$[1].amount").value(100.00))
+                .andExpect(jsonPath("$[1].balanceAfter").value(100.00));
+    }
+
+    @Test
+    void statement_transfer_recordsBothLegsWithCounterparty() throws Exception {
+        String source = createAccount("16161616161");
+        String destination = createAccount("17171717171");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 40.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        // perna de saida na conta origem, apontando para o destino
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", source))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("TRANSFER_OUT"))
+                .andExpect(jsonPath("$[0].amount").value(40.00))
+                .andExpect(jsonPath("$[0].balanceAfter").value(60.00))
+                .andExpect(jsonPath("$[0].counterpartyAccountId").value(destination));
+
+        // perna de entrada na conta destino, apontando para a origem
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", destination))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("TRANSFER_IN"))
+                .andExpect(jsonPath("$[0].amount").value(40.00))
+                .andExpect(jsonPath("$[0].balanceAfter").value(40.00))
+                .andExpect(jsonPath("$[0].counterpartyAccountId").value(source));
+    }
+
+    @Test
+    void statement_failedTransfer_recordsNothing() throws Exception {
+        String source = createAccount("18181818181");
+        String destination = createAccount("19191919191");
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 50.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+
+        // rollback: nenhum lancamento registrado em nenhuma das contas
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", source))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", destination))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void statement_accountNotFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+    }
 }

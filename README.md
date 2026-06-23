@@ -35,18 +35,29 @@ docker run -p 8080:8080 bank-api
 
 | Método | Rota                       | Descrição                |
 |--------|----------------------------|--------------------------|
-| POST   | `/api/v1/accounts`              | Cria conta (saldo zero)       |
+| POST   | `/api/v1/auth/register`         | Cadastra usuário e devolve JWT |
+| POST   | `/api/v1/auth/login`            | Autentica e devolve JWT       |
+| POST   | `/api/v1/accounts`              | Cria conta (saldo zero) 🔒    |
 | GET    | `/api/v1/accounts/{id}`         | Consulta conta por id         |
 | POST   | `/api/v1/accounts/{id}/deposit` | Deposita valor na conta       |
 | POST   | `/api/v1/accounts/{id}/withdraw`| Saca valor (valida saldo)     |
 | POST   | `/api/v1/accounts/{id}/transfer`| Transfere para outra conta (atômico) |
-| GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta (lançamentos)|
+| GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta (lançamentos) 🔒|
 | GET    | `/api/v1/accounts/health`       | Health check                  |
 
-Exemplo:
+> 🔒 = exige `Authorization: Bearer <token>`. As rotas de conta são protegidas; obtenha um token em `/api/v1/auth/register` ou `/api/v1/auth/login`.
+
+Exemplo (registrar, pegar o token e criar conta autenticado):
 
 ```bash
+# 1) cadastrar e capturar o token
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"lucas","password":"supersecret1"}' | jq -r .token)
+
+# 2) usar o token nas operações de conta
 curl -X POST http://localhost:8080/api/v1/accounts \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"ownerName":"Lucas Andrade","document":"12345678901"}'
 ```
@@ -57,6 +68,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - **DTOs (records) separados da entidade** — entidade JPA não vaza pela API.
 - **Tratamento de erro centralizado** (`@RestControllerAdvice`) com corpo de erro padronizado.
 - **Arquitetura em camadas** controller → service → repository.
+- **Autenticação JWT stateless** (Spring Security) — senha guardada como hash BCrypt, segredo do token via configuração/env, filtro `OncePerRequestFilter` valida o `Bearer` em cada requisição.
 
 ## Roadmap
 
@@ -64,7 +76,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - [x] Depósito e saque com regras de saldo
 - [x] Transferência entre contas (transacional, atômica)
 - [x] Extrato / histórico de transações
-- [ ] Autenticação JWT (Spring Security)
+- [x] Autenticação JWT (Spring Security)
 - [ ] Migração para PostgreSQL + Flyway
 - [ ] Observabilidade (Actuator, métricas)
 

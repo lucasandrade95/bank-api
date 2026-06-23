@@ -15,6 +15,12 @@ spring:
       enabled: true
       path: /h2-console
 
+security:
+  jwt:
+    # Em producao, sobrescreva via variavel de ambiente SECURITY_JWT_SECRET.
+    secret: ${SECURITY_JWT_SECRET:change-me-dev-secret-please-override-in-prod-0123456789}
+    expiration-minutes: 60
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

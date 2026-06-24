@@ -14,6 +14,10 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  # Em dev/teste o schema e criado pelo Hibernate (H2). O schema versionado
+  # por Flyway e aplicado apenas no profile "postgres".
+  flyway:
+    enabled: false
 
 security:
   jwt:

@@ -1,0 +1,16 @@
+# PostgreSQL local para rodar a API no profile "postgres".
+# Uso: docker compose up -d  &&  mvn spring-boot:run -Dspring-boot.run.profiles=postgres
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bankdb
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: bank
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

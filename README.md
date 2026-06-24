@@ -9,7 +9,7 @@ Projeto de portfólio com foco em backend bancário: regras de negócio financei
 
 - Java 21, Spring Boot 3.3
 - Spring Web, Spring Data JPA, Bean Validation
-- H2 (dev) — PostgreSQL planejado
+- H2 (dev/teste) e PostgreSQL (profile `postgres`), com schema versionado por Flyway
 - springdoc-openapi (Swagger UI)
 - JUnit 5, MockMvc
 - Docker (multi-stage), GitHub Actions (CI)
@@ -28,8 +28,21 @@ docker build -t bank-api .
 docker run -p 8080:8080 bank-api
 ```
 
+Por padrão a aplicação sobe com **H2 em memória** (schema criado pelo Hibernate),
+ideal para rodar e testar sem dependências externas.
+
+Para usar **PostgreSQL** com migrações **Flyway** (mais próximo de produção):
+
+```bash
+# sobe um Postgres local
+docker compose up -d
+
+# roda a API no profile postgres (Flyway aplica db/migration/*.sql no boot)
+mvn spring-boot:run -Dspring-boot.run.profiles=postgres
+```
+
 - Swagger UI: http://localhost:8080/swagger-ui.html
-- H2 console: http://localhost:8080/h2-console (JDBC `jdbc:h2:mem:bankdb`, user `sa`)
+- H2 console (apenas no profile padrão): http://localhost:8080/h2-console (JDBC `jdbc:h2:mem:bankdb`, user `sa`)
 
 ## Endpoints (v1)
 
@@ -69,6 +82,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - **Tratamento de erro centralizado** (`@RestControllerAdvice`) com corpo de erro padronizado.
 - **Arquitetura em camadas** controller → service → repository.
 - **Autenticação JWT stateless** (Spring Security) — senha guardada como hash BCrypt, segredo do token via configuração/env, filtro `OncePerRequestFilter` valida o `Bearer` em cada requisição.
+- **Schema versionado por Flyway** no profile `postgres` (`ddl-auto: validate`) — em produção o banco é dono do schema e o Hibernate apenas valida que as entidades batem; H2 com `ddl-auto: update` segue para dev/teste rápidos.
 
 ## Roadmap
 
@@ -77,7 +91,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - [x] Transferência entre contas (transacional, atômica)
 - [x] Extrato / histórico de transações
 - [x] Autenticação JWT (Spring Security)
-- [ ] Migração para PostgreSQL + Flyway
+- [x] Migração para PostgreSQL + Flyway
 - [ ] Observabilidade (Actuator, métricas)
 
 ## Autor

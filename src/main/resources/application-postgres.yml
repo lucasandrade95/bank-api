@@ -1,0 +1,22 @@
+# Profile de producao: PostgreSQL com schema versionado por Flyway.
+# Ative com: --spring.profiles.active=postgres
+# As credenciais vem de variaveis de ambiente (com defaults para o docker-compose local).
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/bankdb}
+    username: ${SPRING_DATASOURCE_USERNAME:bank}
+    password: ${SPRING_DATASOURCE_PASSWORD:bank}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    # O schema e dono do Flyway; o Hibernate apenas valida que as entidades batem.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  h2:
+    console:
+      enabled: false

@@ -29,5 +29,25 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+# Observabilidade: Actuator expoe health/info/metrics. /health e /info ficam
+# publicos (uteis para load balancer e probes); os demais exigem autenticacao.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: bank-api
+    description: REST API de operacoes bancarias (contas e transacoes)
+    version: 0.1.0
+
 server:
   port: 8080

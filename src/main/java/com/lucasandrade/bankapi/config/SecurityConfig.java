@@ -25,6 +25,10 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATHS = {
             "/api/v1/auth/**",
             "/api/v1/accounts/health",
+            // probes liberados para load balancer/orquestrador; metricas exigem token
+            "/actuator/health",
+            "/actuator/health/**",
+            "/actuator/info",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**",

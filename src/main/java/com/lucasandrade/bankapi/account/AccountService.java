@@ -8,6 +8,8 @@ import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.NotFoundException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,9 +23,27 @@ public class AccountService {
     private final AccountRepository repository;
     private final TransactionRepository transactionRepository;
 
-    public AccountService(AccountRepository repository, TransactionRepository transactionRepository) {
+    // Metricas de negocio: contam operacoes concluidas, expostas em /actuator/metrics.
+    private final Counter depositCounter;
+    private final Counter withdrawalCounter;
+    private final Counter transferCounter;
+
+    public AccountService(AccountRepository repository,
+                          TransactionRepository transactionRepository,
+                          MeterRegistry meterRegistry) {
         this.repository = repository;
         this.transactionRepository = transactionRepository;
+        this.depositCounter = operationCounter(meterRegistry, "deposit");
+        this.withdrawalCounter = operationCounter(meterRegistry, "withdrawal");
+        this.transferCounter = operationCounter(meterRegistry, "transfer");
+    }
+
+    /** Counter de operacoes concluidas, diferenciado pela tag {@code type}. */
+    private static Counter operationCounter(MeterRegistry registry, String type) {
+        return Counter.builder("bank.account.operations")
+                .description("Total de operacoes bancarias concluidas")
+                .tag("type", type)
+                .register(registry);
     }
 
     @Transactional
@@ -46,6 +66,7 @@ public class AccountService {
         account.deposit(request.amount());
         repository.save(account);
         record(account, TransactionType.DEPOSIT, request.amount(), null);
+        depositCounter.increment();
         return AccountResponse.from(account);
     }
 
@@ -55,6 +76,7 @@ public class AccountService {
         account.withdraw(request.amount());
         repository.save(account);
         record(account, TransactionType.WITHDRAWAL, request.amount(), null);
+        withdrawalCounter.increment();
         return AccountResponse.from(account);
     }
 
@@ -78,6 +100,7 @@ public class AccountService {
         repository.save(destination);
         record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
         record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
+        transferCounter.increment();
         return TransferResponse.of(source, destination, request.amount());
     }
 

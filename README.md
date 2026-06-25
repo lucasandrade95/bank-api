@@ -57,6 +57,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=postgres
 | POST   | `/api/v1/accounts/{id}/transfer`| Transfere para outra conta (atômico) |
 | GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta (lançamentos) 🔒|
 | GET    | `/api/v1/accounts/health`       | Health check                  |
+| GET    | `/actuator/health`              | Health do app (probes)        |
+| GET    | `/actuator/info`                | Metadados do app              |
+| GET    | `/actuator/metrics`             | Métricas (JVM, HTTP, negócio) 🔒|
 
 > 🔒 = exige `Authorization: Bearer <token>`. As rotas de conta são protegidas; obtenha um token em `/api/v1/auth/register` ou `/api/v1/auth/login`.
 
@@ -83,6 +86,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - **Arquitetura em camadas** controller → service → repository.
 - **Autenticação JWT stateless** (Spring Security) — senha guardada como hash BCrypt, segredo do token via configuração/env, filtro `OncePerRequestFilter` valida o `Bearer` em cada requisição.
 - **Schema versionado por Flyway** no profile `postgres` (`ddl-auto: validate`) — em produção o banco é dono do schema e o Hibernate apenas valida que as entidades batem; H2 com `ddl-auto: update` segue para dev/teste rápidos.
+- **Observabilidade com Actuator + Micrometer** — `/actuator/health` e `/actuator/info` ficam públicos (úteis para probes de orquestrador/load balancer); `/actuator/metrics` exige token. Além das métricas técnicas (JVM, HTTP), há uma métrica de negócio `bank.account.operations` (counter com tag `type` = `deposit`/`withdrawal`/`transfer`) que conta operações concluídas.
 
 ## Roadmap
 
@@ -92,7 +96,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - [x] Extrato / histórico de transações
 - [x] Autenticação JWT (Spring Security)
 - [x] Migração para PostgreSQL + Flyway
-- [ ] Observabilidade (Actuator, métricas)
+- [x] Observabilidade (Actuator, métricas)
 
 ## Autor
 

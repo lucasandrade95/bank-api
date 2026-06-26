@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.shared;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -33,6 +34,21 @@ public class GlobalExceptionHandler {
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .toList();
         return build(HttpStatus.BAD_REQUEST, messages);
+    }
+
+    /** Violacoes em parametros de requisicao (ex.: @Min/@Max em page/size). */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException ex) {
+        List<String> messages = ex.getConstraintViolations().stream()
+                .map(v -> lastNode(v.getPropertyPath().toString()) + ": " + v.getMessage())
+                .toList();
+        return build(HttpStatus.BAD_REQUEST, messages);
+    }
+
+    /** Extrai so o nome do parametro (ex.: "statement.size" -> "size"). */
+    private static String lastNode(String propertyPath) {
+        int dot = propertyPath.lastIndexOf('.');
+        return dot >= 0 ? propertyPath.substring(dot + 1) : propertyPath;
     }
 
     private ResponseEntity<ApiError> build(HttpStatus status, List<String> messages) {

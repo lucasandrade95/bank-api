@@ -55,7 +55,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=postgres
 | POST   | `/api/v1/accounts/{id}/deposit` | Deposita valor na conta       |
 | POST   | `/api/v1/accounts/{id}/withdraw`| Saca valor (valida saldo)     |
 | POST   | `/api/v1/accounts/{id}/transfer`| Transfere para outra conta (atômico) |
-| GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta (lançamentos) 🔒|
+| GET    | `/api/v1/accounts/{id}/statement`| Extrato da conta paginado (`?page=&size=`) 🔒|
 | GET    | `/api/v1/accounts/health`       | Health check                  |
 | GET    | `/actuator/health`              | Health do app (probes)        |
 | GET    | `/actuator/info`                | Metadados do app              |
@@ -86,6 +86,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 - **Arquitetura em camadas** controller → service → repository.
 - **Autenticação JWT stateless** (Spring Security) — senha guardada como hash BCrypt, segredo do token via configuração/env, filtro `OncePerRequestFilter` valida o `Bearer` em cada requisição.
 - **Schema versionado por Flyway** no profile `postgres` (`ddl-auto: validate`) — em produção o banco é dono do schema e o Hibernate apenas valida que as entidades batem; H2 com `ddl-auto: update` segue para dev/teste rápidos.
+- **Extrato paginado** — o extrato nunca devolve todos os lançamentos de uma vez (uma conta pode ter milhares); o cliente pede `page`/`size` e recebe um envelope `PageResponse` (`content` + `totalElements`/`totalPages`/`last`). O `size` é limitado (1–100) para proteger banco e payload, e a ordenação fica fixa no servidor (mais recente primeiro) — o cliente não escolhe a ordem.
 - **Observabilidade com Actuator + Micrometer** — `/actuator/health` e `/actuator/info` ficam públicos (úteis para probes de orquestrador/load balancer); `/actuator/metrics` exige token. Além das métricas técnicas (JVM, HTTP), há uma métrica de negócio `bank.account.operations` (counter com tag `type` = `deposit`/`withdrawal`/`transfer`) que conta operações concluídas.
 
 ## Roadmap

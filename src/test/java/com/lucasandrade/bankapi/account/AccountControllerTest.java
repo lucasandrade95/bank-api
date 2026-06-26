@@ -232,8 +232,10 @@ class AccountControllerTest {
 
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.last").value(true));
     }
 
     @Test
@@ -252,14 +254,15 @@ class AccountControllerTest {
 
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content.length()").value(2))
                 // mais recente primeiro: o saque
-                .andExpect(jsonPath("$[0].type").value("WITHDRAWAL"))
-                .andExpect(jsonPath("$[0].amount").value(30.00))
-                .andExpect(jsonPath("$[0].balanceAfter").value(70.00))
-                .andExpect(jsonPath("$[1].type").value("DEPOSIT"))
-                .andExpect(jsonPath("$[1].amount").value(100.00))
-                .andExpect(jsonPath("$[1].balanceAfter").value(100.00));
+                .andExpect(jsonPath("$.content[0].type").value("WITHDRAWAL"))
+                .andExpect(jsonPath("$.content[0].amount").value(30.00))
+                .andExpect(jsonPath("$.content[0].balanceAfter").value(70.00))
+                .andExpect(jsonPath("$.content[1].type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.content[1].amount").value(100.00))
+                .andExpect(jsonPath("$.content[1].balanceAfter").value(100.00));
     }
 
     @Test
@@ -284,18 +287,18 @@ class AccountControllerTest {
         // perna de saida na conta origem, apontando para o destino
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", source))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].type").value("TRANSFER_OUT"))
-                .andExpect(jsonPath("$[0].amount").value(40.00))
-                .andExpect(jsonPath("$[0].balanceAfter").value(60.00))
-                .andExpect(jsonPath("$[0].counterpartyAccountId").value(destination));
+                .andExpect(jsonPath("$.content[0].type").value("TRANSFER_OUT"))
+                .andExpect(jsonPath("$.content[0].amount").value(40.00))
+                .andExpect(jsonPath("$.content[0].balanceAfter").value(60.00))
+                .andExpect(jsonPath("$.content[0].counterpartyAccountId").value(destination));
 
         // perna de entrada na conta destino, apontando para a origem
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", destination))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].type").value("TRANSFER_IN"))
-                .andExpect(jsonPath("$[0].amount").value(40.00))
-                .andExpect(jsonPath("$[0].balanceAfter").value(40.00))
-                .andExpect(jsonPath("$[0].counterpartyAccountId").value(source));
+                .andExpect(jsonPath("$.content[0].type").value("TRANSFER_IN"))
+                .andExpect(jsonPath("$.content[0].amount").value(40.00))
+                .andExpect(jsonPath("$.content[0].balanceAfter").value(40.00))
+                .andExpect(jsonPath("$.content[0].counterpartyAccountId").value(source));
     }
 
     @Test
@@ -315,15 +318,69 @@ class AccountControllerTest {
         // rollback: nenhum lancamento registrado em nenhuma das contas
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", source))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.content.length()").value(0));
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", destination))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.content.length()").value(0));
     }
 
     @Test
     void statement_accountNotFound_returns404() throws Exception {
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", "00000000-0000-0000-0000-000000000000"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void statement_pagination_respectsPageAndSize() throws Exception {
+        String id = createAccount("23232323232");
+
+        // tres lancamentos (depositos) para paginar em paginas de 2
+        for (int i = 1; i <= 3; i++) {
+            mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{ \"amount\": 10.00 }"))
+                    .andExpect(status().isOk());
+        }
+
+        // primeira pagina: 2 itens, ainda nao e a ultima
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.last").value(false));
+
+        // segunda pagina: o item restante, agora e a ultima
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.last").value(true));
+    }
+
+    @Test
+    void statement_invalidSize_returns400() throws Exception {
+        String id = createAccount("24242424242");
+
+        // size acima do maximo permitido (100)
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest());
+
+        // size minimo e 1
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest());
+
+        // page nao pode ser negativa
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest());
     }
 }

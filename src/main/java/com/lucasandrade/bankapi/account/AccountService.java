@@ -8,13 +8,14 @@ import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.NotFoundException;
+import com.lucasandrade.bankapi.shared.PageResponse;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -104,13 +105,20 @@ public class AccountService {
         return TransferResponse.of(source, destination, request.amount());
     }
 
-    /** Extrato da conta (lancamentos do mais recente para o mais antigo). */
+    /**
+     * Extrato da conta (lancamentos do mais recente para o mais antigo), paginado.
+     *
+     * <p>Uma conta pode acumular milhares de lancamentos, entao o extrato nunca e
+     * devolvido por inteiro: o cliente pede uma pagina ({@code page}/{@code size})
+     * e recebe os metadados para saber se ha mais.
+     */
     @Transactional(readOnly = true)
-    public List<TransactionResponse> statement(UUID id) {
+    public PageResponse<TransactionResponse> statement(UUID id, int page, int size) {
         getAccount(id); // garante 404 para conta inexistente
-        return transactionRepository.findByAccountIdOrderByCreatedAtDescIdDesc(id).stream()
-                .map(TransactionResponse::from)
-                .toList();
+        return PageResponse.from(
+                transactionRepository
+                        .findByAccountIdOrderByCreatedAtDescIdDesc(id, PageRequest.of(page, size))
+                        .map(TransactionResponse::from));
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */

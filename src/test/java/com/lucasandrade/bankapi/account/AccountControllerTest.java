@@ -70,6 +70,29 @@ class AccountControllerTest {
     }
 
     @Test
+    void createAccount_malformedJson_returns400_withStandardErrorBody() throws Exception {
+        // JSON quebrado: deve cair no handler de HttpMessageNotReadableException
+        // e devolver o corpo de erro padrao (ApiError), nao o do Spring.
+        mockMvc.perform(post("/api/v1/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"ownerName\": "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.messages").isArray())
+                .andExpect(jsonPath("$.messages.length()").value(1));
+    }
+
+    @Test
+    void getAccount_idNotUuid_returns400_withStandardErrorBody() throws Exception {
+        // id de caminho que nao e UUID: handler de MethodArgumentTypeMismatchException
+        mockMvc.perform(get("/api/v1/accounts/{id}", "nao-e-um-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.messages[0]").value("id: valor invalido"));
+    }
+
+    @Test
     void getAccount_notFound_returns404() throws Exception {
         mockMvc.perform(get("/api/v1/accounts/{id}", "00000000-0000-0000-0000-000000000000"))
                 .andExpect(status().isNotFound());

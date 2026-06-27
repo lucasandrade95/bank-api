@@ -3,10 +3,12 @@ package com.lucasandrade.bankapi.shared;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -34,6 +36,25 @@ public class GlobalExceptionHandler {
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .toList();
         return build(HttpStatus.BAD_REQUEST, messages);
+    }
+
+    /**
+     * Corpo da requisicao ausente, JSON malformado ou com tipo incompativel
+     * (ex.: {@code amount: "abc"}). Sem este handler o Spring devolveria um corpo
+     * de erro proprio, fora do padrao {@link ApiError} da API.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleNotReadable(HttpMessageNotReadableException ex) {
+        return build(HttpStatus.BAD_REQUEST, List.of("Corpo da requisicao ausente ou malformado"));
+    }
+
+    /**
+     * Parametro de caminho ou query com tipo invalido (ex.: id de conta que nao e
+     * um UUID, ou {@code page=abc}). Mantem o mesmo corpo de erro padrao.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return build(HttpStatus.BAD_REQUEST, List.of(ex.getName() + ": valor invalido"));
     }
 
     /** Violacoes em parametros de requisicao (ex.: @Min/@Max em page/size). */

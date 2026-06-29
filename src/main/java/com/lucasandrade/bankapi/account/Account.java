@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,6 +37,16 @@ public class Account {
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    /**
+     * Versao para travamento otimista. O JPA inclui {@code WHERE version = ?} em
+     * cada UPDATE e incrementa a coluna; se duas transacoes leem o mesmo saldo e
+     * tentam grava-lo, a segunda atualiza 0 linhas e o Hibernate lanca
+     * {@code ObjectOptimisticLockingFailureException} — evita o lost update
+     * (uma operacao concorrente sobrescrever o saldo da outra).
+     */
+    @Version
+    private long version;
 
     protected Account() {
         // exigido pelo JPA
@@ -93,5 +104,9 @@ public class Account {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.shared;
 
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -55,6 +56,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return build(HttpStatus.BAD_REQUEST, List.of(ex.getName() + ": valor invalido"));
+    }
+
+    /**
+     * Conflito de concorrencia: duas operacoes tentaram alterar a mesma conta a
+     * partir do mesmo saldo (travamento otimista via {@code @Version}). A perdedora
+     * recebe 409 e pode simplesmente repetir a requisicao com o saldo ja atualizado.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleOptimisticLock(OptimisticLockingFailureException ex) {
+        return build(HttpStatus.CONFLICT,
+                List.of("Conta alterada concorrentemente, tente novamente"));
     }
 
     /** Violacoes em parametros de requisicao (ex.: @Min/@Max em page/size). */

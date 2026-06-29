@@ -51,3 +51,10 @@ info:
 
 server:
   port: 8080
+
+# Inclui o request id (correlation id, definido por RequestIdFilter) em cada
+# linha de log, logo apos o nivel — assim os logs de uma mesma chamada ficam
+# correlacionaveis. O sufixo ":-" deixa o campo vazio quando nao ha id no MDC.
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"

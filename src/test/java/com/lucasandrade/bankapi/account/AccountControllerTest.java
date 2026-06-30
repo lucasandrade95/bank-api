@@ -45,7 +45,7 @@ class AccountControllerTest {
     @Test
     void createAccount_returns201_andZeroBalance() throws Exception {
         String body = """
-                { "ownerName": "Lucas Andrade", "document": "12345678901" }
+                { "ownerName": "Lucas Andrade", "document": "11144477735" }
                 """;
 
         mockMvc.perform(post("/api/v1/accounts")
@@ -67,6 +67,22 @@ class AccountControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createAccount_cpfWithWrongCheckDigit_returns400() throws Exception {
+        // 11 digitos, formato valido, mas digitos verificadores nao conferem:
+        // a validacao @Cpf deve reprovar (um banco real nao aceitaria este CPF).
+        String body = """
+                { "ownerName": "Fulano", "document": "12345678901" }
+                """;
+
+        mockMvc.perform(post("/api/v1/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.messages").isArray());
     }
 
     @Test
@@ -100,7 +116,7 @@ class AccountControllerTest {
 
     @Test
     void deposit_increasesBalance_returns200() throws Exception {
-        String id = createAccount("11111111111");
+        String id = createAccount("22255588846");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -111,7 +127,7 @@ class AccountControllerTest {
 
     @Test
     void withdraw_withinBalance_returns200_andDebits() throws Exception {
-        String id = createAccount("22222222222");
+        String id = createAccount("33366699957");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -127,7 +143,7 @@ class AccountControllerTest {
 
     @Test
     void withdraw_insufficientBalance_returns422() throws Exception {
-        String id = createAccount("33333333333");
+        String id = createAccount("12345678062");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -137,7 +153,7 @@ class AccountControllerTest {
 
     @Test
     void deposit_negativeAmount_returns400() throws Exception {
-        String id = createAccount("44444444444");
+        String id = createAccount("98765432029");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -155,8 +171,8 @@ class AccountControllerTest {
 
     @Test
     void transfer_movesFundsAtomically_returns200() throws Exception {
-        String source = createAccount("55555555555");
-        String destination = createAccount("66666666666");
+        String source = createAccount("10020030088");
+        String destination = createAccount("45678912011");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -178,8 +194,8 @@ class AccountControllerTest {
 
     @Test
     void transfer_insufficientBalance_returns422_andRollsBack() throws Exception {
-        String source = createAccount("77777777777");
-        String destination = createAccount("88888888888");
+        String source = createAccount("23456781008");
+        String destination = createAccount("34567891066");
 
         String body = """
                 { "destinationAccountId": "%s", "amount": 50.00 }
@@ -198,7 +214,7 @@ class AccountControllerTest {
 
     @Test
     void transfer_toSameAccount_returns422() throws Exception {
-        String id = createAccount("99999999999");
+        String id = createAccount("56789012060");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -217,7 +233,7 @@ class AccountControllerTest {
 
     @Test
     void transfer_destinationNotFound_returns404() throws Exception {
-        String source = createAccount("10101010101");
+        String source = createAccount("67890123035");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -236,8 +252,8 @@ class AccountControllerTest {
 
     @Test
     void transfer_negativeAmount_returns400() throws Exception {
-        String source = createAccount("12121212121");
-        String destination = createAccount("13131313131");
+        String source = createAccount("78901234009");
+        String destination = createAccount("89012345057");
 
         String body = """
                 { "destinationAccountId": "%s", "amount": -10.00 }
@@ -251,7 +267,7 @@ class AccountControllerTest {
 
     @Test
     void statement_newAccount_returnsEmptyList() throws Exception {
-        String id = createAccount("14141414141");
+        String id = createAccount("90123456002");
 
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
                 .andExpect(status().isOk())
@@ -263,7 +279,7 @@ class AccountControllerTest {
 
     @Test
     void statement_recordsDepositAndWithdrawal_mostRecentFirst() throws Exception {
-        String id = createAccount("15151515151");
+        String id = createAccount("11223344002");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -290,8 +306,8 @@ class AccountControllerTest {
 
     @Test
     void statement_transfer_recordsBothLegsWithCounterparty() throws Exception {
-        String source = createAccount("16161616161");
-        String destination = createAccount("17171717171");
+        String source = createAccount("22334455032");
+        String destination = createAccount("33445566062");
 
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -326,8 +342,8 @@ class AccountControllerTest {
 
     @Test
     void statement_failedTransfer_recordsNothing() throws Exception {
-        String source = createAccount("18181818181");
-        String destination = createAccount("19191919191");
+        String source = createAccount("44556677092");
+        String destination = createAccount("55667788012");
 
         String body = """
                 { "destinationAccountId": "%s", "amount": 50.00 }
@@ -355,7 +371,7 @@ class AccountControllerTest {
 
     @Test
     void statement_pagination_respectsPageAndSize() throws Exception {
-        String id = createAccount("23232323232");
+        String id = createAccount("66778899042");
 
         // tres lancamentos (depositos) para paginar em paginas de 2
         for (int i = 1; i <= 3; i++) {
@@ -389,7 +405,7 @@ class AccountControllerTest {
 
     @Test
     void statement_invalidSize_returns400() throws Exception {
-        String id = createAccount("24242424242");
+        String id = createAccount("77889900007");
 
         // size acima do maximo permitido (100)
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)

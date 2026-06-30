@@ -57,7 +57,7 @@ class ObservabilityTest {
     void deposit_incrementsBusinessCounter() throws Exception {
         double before = depositCount();
 
-        String accountId = createAccount("20202020202");
+        String accountId = createAccount("10120230364");
         mockMvc.perform(post("/api/v1/accounts/{id}/deposit", accountId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"amount\": 25.00 }"))

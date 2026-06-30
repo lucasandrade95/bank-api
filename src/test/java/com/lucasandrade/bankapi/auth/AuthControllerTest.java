@@ -100,7 +100,7 @@ class AuthControllerTest {
     @Test
     void protectedEndpoint_withoutToken_returns401() throws Exception {
         String body = """
-                { "ownerName": "Frank", "document": "20202020202" }
+                { "ownerName": "Frank", "document": "88990011035" }
                 """;
         mockMvc.perform(post("/api/v1/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,7 +113,7 @@ class AuthControllerTest {
         String token = register("grace", "supersecret1");
 
         String body = """
-                { "ownerName": "Grace", "document": "30303030303" }
+                { "ownerName": "Grace", "document": "99001122027" }
                 """;
         mockMvc.perform(post("/api/v1/accounts")
                         .header("Authorization", "Bearer " + token)

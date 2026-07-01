@@ -69,6 +69,17 @@ public class GlobalExceptionHandler {
                 List.of("Conta alterada concorrentemente, tente novamente"));
     }
 
+    /**
+     * Argumento de requisicao logicamente invalido que nao da para expressar numa
+     * unica anotacao Bean Validation — hoje o intervalo de datas do extrato com
+     * {@code from} depois de {@code to}. Fica em 400 (entrada malformada), no mesmo
+     * corpo padrao dos demais erros de parametro.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
+        return build(HttpStatus.BAD_REQUEST, List.of(ex.getMessage()));
+    }
+
     /** Violacoes em parametros de requisicao (ex.: @Min/@Max em page/size). */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException ex) {

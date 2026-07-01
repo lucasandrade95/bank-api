@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Service
@@ -111,13 +114,25 @@ public class AccountService {
      * <p>Uma conta pode acumular milhares de lancamentos, entao o extrato nunca e
      * devolvido por inteiro: o cliente pede uma pagina ({@code page}/{@code size})
      * e recebe os metadados para saber se ha mais.
+     *
+     * <p>{@code from} e {@code to} sao datas opcionais (inclusivas nas duas pontas)
+     * que restringem o extrato a um periodo — util para o cliente pedir, por
+     * exemplo, "o extrato de janeiro". As datas sao interpretadas em UTC e viram
+     * um intervalo semi-aberto {@code [from 00:00, (to+1 dia) 00:00)}, para o dia
+     * final entrar inteiro.
      */
     @Transactional(readOnly = true)
-    public PageResponse<TransactionResponse> statement(UUID id, int page, int size) {
+    public PageResponse<TransactionResponse> statement(UUID id, int page, int size,
+                                                       LocalDate from, LocalDate to) {
         getAccount(id); // garante 404 para conta inexistente
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("from nao pode ser depois de to");
+        }
+        Instant fromInstant = from == null ? null : from.atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
         return PageResponse.from(
                 transactionRepository
-                        .findByAccountIdOrderByCreatedAtDescIdDesc(id, PageRequest.of(page, size))
+                        .findStatement(id, fromInstant, toInstant, PageRequest.of(page, size))
                         .map(TransactionResponse::from));
     }
 

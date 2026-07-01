@@ -404,6 +404,56 @@ class AccountControllerTest {
     }
 
     @Test
+    void statement_dateRange_filtersByPeriod() throws Exception {
+        String id = createAccount("32165498791");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.00 }"))
+                .andExpect(status().isOk());
+
+        // janela abrangente (from inclusivo, to inclusivo): pega o lancamento
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("from", "1900-01-01")
+                        .param("to", "2999-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1));
+
+        // janela inteiramente no futuro: nao pega nada
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("from", "2999-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        // janela inteiramente no passado (to exclusivo no dia seguinte): nao pega nada
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("to", "1900-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void statement_invalidDateRange_returns400() throws Exception {
+        String id = createAccount("45678912364");
+
+        // from depois de to
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("from", "2026-02-01")
+                        .param("to", "2026-01-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+
+        // data malformada cai no corpo de erro padrao (type mismatch)
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("from", "nao-e-data"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void statement_invalidSize_returns400() throws Exception {
         String id = createAccount("77889900007");
 

@@ -64,6 +64,22 @@ public class AccountService {
         return AccountResponse.from(getAccount(id));
     }
 
+    /** Congela a conta: bloqueia toda movimentacao ate ser reativada. */
+    @Transactional
+    public AccountResponse block(UUID id) {
+        Account account = getAccount(id);
+        account.block();
+        return AccountResponse.from(repository.save(account));
+    }
+
+    /** Reativa uma conta congelada, voltando a permitir movimentacao. */
+    @Transactional
+    public AccountResponse unblock(UUID id) {
+        Account account = getAccount(id);
+        account.unblock();
+        return AccountResponse.from(repository.save(account));
+    }
+
     @Transactional
     public AccountResponse deposit(UUID id, MoneyOperationRequest request) {
         Account account = getAccount(id);

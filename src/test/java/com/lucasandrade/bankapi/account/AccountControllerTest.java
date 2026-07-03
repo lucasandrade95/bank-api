@@ -170,6 +170,89 @@ class AccountControllerTest {
     }
 
     @Test
+    void createAccount_startsActive() throws Exception {
+        String id = createAccount("70010020039");
+
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void block_freezesAccount_rejectsDepositWith422() throws Exception {
+        String id = createAccount("70010020110");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("BLOCKED"));
+
+        // conta congelada nao movimenta: deposito cai em 422 (regra de negocio)
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.00 }"))
+                .andExpect(status().isUnprocessableEntity());
+
+        // saque tambem e barrado enquanto bloqueada
+        mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.00 }"))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void unblock_reactivatesAccount_allowsOperationsAgain() throws Exception {
+        String id = createAccount("70010020209");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", id))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/accounts/{id}/unblock", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        // reativada, volta a aceitar deposito
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 25.00 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(25.00));
+    }
+
+    @Test
+    void transfer_toBlockedDestination_returns422_andRollsBack() throws Exception {
+        String source = createAccount("70010020381");
+        String destination = createAccount("70010020462");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        // congela o destino: o credito da transferencia deve ser barrado
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", destination))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 30.00 }
+                """.formatted(destination);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+
+        // rollback: a origem nao foi debitada
+        mockMvc.perform(get("/api/v1/accounts/{id}", source))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(100.00));
+    }
+
+    @Test
+    void block_accountNotFound_returns404() throws Exception {
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void transfer_movesFundsAtomically_returns200() throws Exception {
         String source = createAccount("10020030088");
         String destination = createAccount("45678912011");

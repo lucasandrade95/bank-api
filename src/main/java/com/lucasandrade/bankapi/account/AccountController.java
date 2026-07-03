@@ -71,6 +71,16 @@ public class AccountController {
         return ResponseEntity.ok(service.transfer(id, request));
     }
 
+    @PostMapping("/{id}/block")
+    public ResponseEntity<AccountResponse> block(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.block(id));
+    }
+
+    @PostMapping("/{id}/unblock")
+    public ResponseEntity<AccountResponse> unblock(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.unblock(id));
+    }
+
     @GetMapping("/{id}/statement")
     public ResponseEntity<PageResponse<TransactionResponse>> statement(
             @PathVariable UUID id,

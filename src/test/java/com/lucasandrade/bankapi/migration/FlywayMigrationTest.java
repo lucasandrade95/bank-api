@@ -55,6 +55,25 @@ class FlywayMigrationTest {
         }
     }
 
+    @Test
+    void migrationsAddAccountStatusColumn() throws Exception {
+        try (Connection conn = freshPostgresLikeDb();
+             Statement st = conn.createStatement()) {
+
+            runMigration(st, "db/migration/V1__init_schema.sql");
+            runMigration(st, "db/migration/V2__add_account_version.sql");
+            runMigration(st, "db/migration/V3__add_account_status.sql");
+
+            try (ResultSet rs = st.executeQuery(
+                    "SELECT count(*) FROM information_schema.columns " +
+                            "WHERE table_schema = 'PUBLIC' " +
+                            "AND table_name = 'ACCOUNTS' AND column_name = 'STATUS'")) {
+                rs.next();
+                assertThat(rs.getInt(1)).isEqualTo(1);
+            }
+        }
+    }
+
     private static Connection freshPostgresLikeDb() throws Exception {
         // Cada teste usa um banco isolado para nao herdar tabelas de outro.
         return DriverManager.getConnection(

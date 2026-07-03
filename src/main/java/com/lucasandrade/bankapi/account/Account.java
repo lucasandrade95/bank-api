@@ -3,6 +3,8 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -35,6 +37,14 @@ public class Account {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance = BigDecimal.ZERO;
 
+    /**
+     * Situacao da conta. Uma conta {@code BLOCKED} rejeita qualquer movimentacao
+     * (deposito, saque e as duas pernas de transferencia) — a conta esta congelada.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private AccountStatus status = AccountStatus.ACTIVE;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -56,6 +66,7 @@ public class Account {
         this.ownerName = ownerName;
         this.document = document;
         this.balance = BigDecimal.ZERO;
+        this.status = AccountStatus.ACTIVE;
         this.createdAt = Instant.now();
     }
 
@@ -64,6 +75,7 @@ public class Account {
      * aqui no dominio, independente da validacao de entrada.
      */
     public void deposit(BigDecimal amount) {
+        ensureActive();
         requirePositive(amount);
         this.balance = this.balance.add(amount);
     }
@@ -73,11 +85,28 @@ public class Account {
      * (sem cheque especial nesta versao).
      */
     public void withdraw(BigDecimal amount) {
+        ensureActive();
         requirePositive(amount);
         if (balance.compareTo(amount) < 0) {
             throw new BusinessException("Saldo insuficiente");
         }
         this.balance = this.balance.subtract(amount);
+    }
+
+    /** Congela a conta: nenhuma movimentacao passa a ser permitida. Idempotente. */
+    public void block() {
+        this.status = AccountStatus.BLOCKED;
+    }
+
+    /** Reativa a conta, voltando a permitir movimentacao. Idempotente. */
+    public void unblock() {
+        this.status = AccountStatus.ACTIVE;
+    }
+
+    private void ensureActive() {
+        if (status == AccountStatus.BLOCKED) {
+            throw new BusinessException("Conta bloqueada; operacao nao permitida");
+        }
     }
 
     private static void requirePositive(BigDecimal amount) {
@@ -100,6 +129,10 @@ public class Account {
 
     public BigDecimal getBalance() {
         return balance;
+    }
+
+    public AccountStatus getStatus() {
+        return status;
     }
 
     public Instant getCreatedAt() {

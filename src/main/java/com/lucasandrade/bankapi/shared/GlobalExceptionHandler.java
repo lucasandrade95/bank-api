@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.shared;
 
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -67,6 +68,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleOptimisticLock(OptimisticLockingFailureException ex) {
         return build(HttpStatus.CONFLICT,
                 List.of("Conta alterada concorrentemente, tente novamente"));
+    }
+
+    /**
+     * Violacao de restricao do banco, hoje o caso de duas requisicoes concorrentes
+     * com a mesma {@code Idempotency-Key} (a chave e PRIMARY KEY): a segunda gravacao
+     * viola a unicidade. Volta 409 para o cliente saber que a operacao ja esta sendo
+     * processada e nao deve ser refeita.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return build(HttpStatus.CONFLICT,
+                List.of("Requisicao ja em processamento (Idempotency-Key duplicada)"));
     }
 
     /**

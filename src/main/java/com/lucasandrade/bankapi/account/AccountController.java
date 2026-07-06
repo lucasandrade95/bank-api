@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,20 +56,23 @@ public class AccountController {
 
     @PostMapping("/{id}/deposit")
     public ResponseEntity<AccountResponse> deposit(@PathVariable UUID id,
+                                                   @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                    @Valid @RequestBody MoneyOperationRequest request) {
-        return ResponseEntity.ok(service.deposit(id, request));
+        return ResponseEntity.ok(service.deposit(id, idempotencyKey, request));
     }
 
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<AccountResponse> withdraw(@PathVariable UUID id,
+                                                    @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                     @Valid @RequestBody MoneyOperationRequest request) {
-        return ResponseEntity.ok(service.withdraw(id, request));
+        return ResponseEntity.ok(service.withdraw(id, idempotencyKey, request));
     }
 
     @PostMapping("/{id}/transfer")
     public ResponseEntity<TransferResponse> transfer(@PathVariable UUID id,
+                                                     @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                      @Valid @RequestBody TransferRequest request) {
-        return ResponseEntity.ok(service.transfer(id, request));
+        return ResponseEntity.ok(service.transfer(id, idempotencyKey, request));
     }
 
     @PostMapping("/{id}/block")

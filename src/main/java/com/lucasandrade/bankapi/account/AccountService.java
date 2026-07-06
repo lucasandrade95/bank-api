@@ -7,6 +7,7 @@ import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
+import com.lucasandrade.bankapi.shared.IdempotencyService;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import com.lucasandrade.bankapi.shared.PageResponse;
 import io.micrometer.core.instrument.Counter;
@@ -26,6 +27,7 @@ public class AccountService {
 
     private final AccountRepository repository;
     private final TransactionRepository transactionRepository;
+    private final IdempotencyService idempotency;
 
     // Metricas de negocio: contam operacoes concluidas, expostas em /actuator/metrics.
     private final Counter depositCounter;
@@ -34,9 +36,11 @@ public class AccountService {
 
     public AccountService(AccountRepository repository,
                           TransactionRepository transactionRepository,
+                          IdempotencyService idempotency,
                           MeterRegistry meterRegistry) {
         this.repository = repository;
         this.transactionRepository = transactionRepository;
+        this.idempotency = idempotency;
         this.depositCounter = operationCounter(meterRegistry, "deposit");
         this.withdrawalCounter = operationCounter(meterRegistry, "withdrawal");
         this.transferCounter = operationCounter(meterRegistry, "transfer");
@@ -81,23 +85,27 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountResponse deposit(UUID id, MoneyOperationRequest request) {
-        Account account = getAccount(id);
-        account.deposit(request.amount());
-        repository.save(account);
-        record(account, TransactionType.DEPOSIT, request.amount(), null);
-        depositCounter.increment();
-        return AccountResponse.from(account);
+    public AccountResponse deposit(UUID id, String idempotencyKey, MoneyOperationRequest request) {
+        return idempotency.execute(idempotencyKey, AccountResponse.class, () -> {
+            Account account = getAccount(id);
+            account.deposit(request.amount());
+            repository.save(account);
+            record(account, TransactionType.DEPOSIT, request.amount(), null);
+            depositCounter.increment();
+            return AccountResponse.from(account);
+        });
     }
 
     @Transactional
-    public AccountResponse withdraw(UUID id, MoneyOperationRequest request) {
-        Account account = getAccount(id);
-        account.withdraw(request.amount());
-        repository.save(account);
-        record(account, TransactionType.WITHDRAWAL, request.amount(), null);
-        withdrawalCounter.increment();
-        return AccountResponse.from(account);
+    public AccountResponse withdraw(UUID id, String idempotencyKey, MoneyOperationRequest request) {
+        return idempotency.execute(idempotencyKey, AccountResponse.class, () -> {
+            Account account = getAccount(id);
+            account.withdraw(request.amount());
+            repository.save(account);
+            record(account, TransactionType.WITHDRAWAL, request.amount(), null);
+            withdrawalCounter.increment();
+            return AccountResponse.from(account);
+        });
     }
 
     /**
@@ -106,22 +114,24 @@ public class AccountService {
      * (ex.: saldo insuficiente) faz rollback total e nenhum saldo e alterado.
      */
     @Transactional
-    public TransferResponse transfer(UUID sourceId, TransferRequest request) {
-        if (sourceId.equals(request.destinationAccountId())) {
-            throw new BusinessException("Conta origem e destino devem ser diferentes");
-        }
-        Account source = getAccount(sourceId);
-        Account destination = getAccount(request.destinationAccountId());
+    public TransferResponse transfer(UUID sourceId, String idempotencyKey, TransferRequest request) {
+        return idempotency.execute(idempotencyKey, TransferResponse.class, () -> {
+            if (sourceId.equals(request.destinationAccountId())) {
+                throw new BusinessException("Conta origem e destino devem ser diferentes");
+            }
+            Account source = getAccount(sourceId);
+            Account destination = getAccount(request.destinationAccountId());
 
-        source.withdraw(request.amount());
-        destination.deposit(request.amount());
+            source.withdraw(request.amount());
+            destination.deposit(request.amount());
 
-        repository.save(source);
-        repository.save(destination);
-        record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
-        record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
-        transferCounter.increment();
-        return TransferResponse.of(source, destination, request.amount());
+            repository.save(source);
+            repository.save(destination);
+            record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
+            record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
+            transferCounter.increment();
+            return TransferResponse.of(source, destination, request.amount());
+        });
     }
 
     /**

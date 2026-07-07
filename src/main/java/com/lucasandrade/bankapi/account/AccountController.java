@@ -49,6 +49,13 @@ public class AccountController {
         return ResponseEntity.created(location).body(created);
     }
 
+    @GetMapping
+    public ResponseEntity<PageResponse<AccountResponse>> list(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(service.list(page, size));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(service.findById(id));

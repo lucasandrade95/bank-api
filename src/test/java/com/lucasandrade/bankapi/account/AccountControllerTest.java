@@ -537,6 +537,52 @@ class AccountControllerTest {
     }
 
     @Test
+    void listAccounts_returnsPaginatedEnvelope_containingCreatedAccount() throws Exception {
+        String doc = "11122233396";
+        createAccount(doc);
+
+        mockMvc.perform(get("/api/v1/accounts").param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(100))
+                .andExpect(jsonPath("$.totalElements").exists())
+                .andExpect(jsonPath("$.totalPages").exists())
+                .andExpect(jsonPath("$.last").exists())
+                // a conta recem-criada aparece na listagem; filtro por documento
+                // para ser robusto ao estado do H2 compartilhado entre testes
+                .andExpect(jsonPath("$.content[?(@.document=='" + doc + "')]").isNotEmpty());
+    }
+
+    @Test
+    void listAccounts_pagination_respectsSize() throws Exception {
+        createAccount("22233344405");
+        createAccount("33344455508");
+
+        // ha pelo menos duas contas; size=1 => a pagina 0 nao e a ultima
+        mockMvc.perform(get("/api/v1/accounts")
+                        .param("page", "0")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.last").value(false));
+    }
+
+    @Test
+    void listAccounts_invalidPagination_returns400() throws Exception {
+        // size acima do maximo permitido (100)
+        mockMvc.perform(get("/api/v1/accounts").param("size", "101"))
+                .andExpect(status().isBadRequest());
+        // size minimo e 1
+        mockMvc.perform(get("/api/v1/accounts").param("size", "0"))
+                .andExpect(status().isBadRequest());
+        // page nao pode ser negativa
+        mockMvc.perform(get("/api/v1/accounts").param("page", "-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void statement_invalidSize_returns400() throws Exception {
         String id = createAccount("77889900007");
 

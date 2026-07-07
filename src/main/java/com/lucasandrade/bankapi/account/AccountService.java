@@ -68,6 +68,19 @@ public class AccountService {
         return AccountResponse.from(getAccount(id));
     }
 
+    /**
+     * Lista contas paginadas (da mais recente para a mais antiga). Como o numero
+     * de contas cresce sem limite, a listagem nunca e devolvida por inteiro: o
+     * cliente pede uma pagina ({@code page}/{@code size}) e recebe os metadados
+     * para saber se ha mais — mesmo envelope {@link PageResponse} do extrato.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<AccountResponse> list(int page, int size) {
+        return PageResponse.from(
+                repository.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size))
+                        .map(AccountResponse::from));
+    }
+
     /** Congela a conta: bloqueia toda movimentacao ate ser reativada. */
     @Transactional
     public AccountResponse block(UUID id) {

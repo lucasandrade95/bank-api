@@ -537,6 +537,59 @@ class AccountControllerTest {
     }
 
     @Test
+    void statement_filtersByType() throws Exception {
+        String id = createAccount("65432198746");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 30.00 }"))
+                .andExpect(status().isOk());
+
+        // so os depositos: 1 lancamento, e nao o saque
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("type", "DEPOSIT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.content[0].amount").value(100.00));
+
+        // so os saques: 1 lancamento
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("type", "WITHDRAWAL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].type").value("WITHDRAWAL"));
+
+        // tipo sem lancamentos nesta conta: extrato vazio
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("type", "TRANSFER_IN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.content.length()").value(0));
+
+        // sem filtro: os dois lancamentos aparecem
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    @Test
+    void statement_invalidType_returns400() throws Exception {
+        String id = createAccount("98712345628");
+
+        // tipo inexistente cai no corpo de erro padrao (type mismatch do enum)
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
+                        .param("type", "NAO_EXISTE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void listAccounts_returnsPaginatedEnvelope_containingCreatedAccount() throws Exception {
         String doc = "11122233396";
         createAccount(doc);

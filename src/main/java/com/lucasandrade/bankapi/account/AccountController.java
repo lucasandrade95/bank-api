@@ -100,8 +100,9 @@ public class AccountController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(service.statement(id, page, size, from, to));
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) TransactionType type) {
+        return ResponseEntity.ok(service.statement(id, page, size, from, to, type));
     }
 
     @GetMapping("/health")

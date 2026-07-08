@@ -159,10 +159,15 @@ public class AccountService {
      * exemplo, "o extrato de janeiro". As datas sao interpretadas em UTC e viram
      * um intervalo semi-aberto {@code [from 00:00, (to+1 dia) 00:00)}, para o dia
      * final entrar inteiro.
+     *
+     * <p>{@code type} e um filtro opcional por tipo de lancamento (ex.: so os
+     * depositos, ou so as pernas de saida de transferencia) — combinavel com o
+     * periodo. Quando {@code null}, o extrato traz todos os tipos.
      */
     @Transactional(readOnly = true)
     public PageResponse<TransactionResponse> statement(UUID id, int page, int size,
-                                                       LocalDate from, LocalDate to) {
+                                                       LocalDate from, LocalDate to,
+                                                       TransactionType type) {
         getAccount(id); // garante 404 para conta inexistente
         if (from != null && to != null && from.isAfter(to)) {
             throw new IllegalArgumentException("from nao pode ser depois de to");
@@ -171,7 +176,7 @@ public class AccountService {
         Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
         return PageResponse.from(
                 transactionRepository
-                        .findStatement(id, fromInstant, toInstant, PageRequest.of(page, size))
+                        .findStatement(id, fromInstant, toInstant, type, PageRequest.of(page, size))
                         .map(TransactionResponse::from));
     }
 

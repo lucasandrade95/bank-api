@@ -15,24 +15,27 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
      * Extrato da conta, do lancamento mais recente para o mais antigo, paginado
      * e opcionalmente restrito a uma janela de tempo.
      *
-     * <p>{@code from} e {@code to} sao opcionais: quando {@code null} aquele lado
-     * da janela fica em aberto (extrato completo). O intervalo e semi-aberto
-     * ({@code from} inclusivo, {@code to} exclusivo) — o service converte as datas
-     * pedidas pelo cliente para esses limites em UTC.
+     * <p>{@code from}, {@code to} e {@code type} sao opcionais: quando {@code null}
+     * aquele filtro fica em aberto (extrato completo). O intervalo de tempo e
+     * semi-aberto ({@code from} inclusivo, {@code to} exclusivo) — o service
+     * converte as datas pedidas pelo cliente para esses limites em UTC — e
+     * {@code type} restringe a um unico tipo de lancamento (ex.: so os depositos).
      *
      * <p>A ordenacao fica fixa na propria query (e nao no {@link Pageable}) para
      * o cliente nunca conseguir mudar a ordem do extrato: ele controla apenas
-     * pagina, tamanho e o periodo.
+     * pagina, tamanho, periodo e tipo.
      */
     @Query("""
             select t from Transaction t
             where t.accountId = :accountId
               and (:from is null or t.createdAt >= :from)
               and (:to is null or t.createdAt < :to)
+              and (:type is null or t.type = :type)
             order by t.createdAt desc, t.id desc
             """)
     Page<Transaction> findStatement(@Param("accountId") UUID accountId,
                                     @Param("from") Instant from,
                                     @Param("to") Instant to,
+                                    @Param("type") TransactionType type,
                                     Pageable pageable);
 }

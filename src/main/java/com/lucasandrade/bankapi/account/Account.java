@@ -95,17 +95,44 @@ public class Account {
 
     /** Congela a conta: nenhuma movimentacao passa a ser permitida. Idempotente. */
     public void block() {
+        ensureNotClosed();
         this.status = AccountStatus.BLOCKED;
     }
 
     /** Reativa a conta, voltando a permitir movimentacao. Idempotente. */
     public void unblock() {
+        ensureNotClosed();
         this.status = AccountStatus.ACTIVE;
     }
 
+    /**
+     * Encerra a conta definitivamente. So e permitido com saldo zero — o titular
+     * precisa sacar ou transferir todo o saldo antes. Depois de encerrada e um
+     * estado terminal: nenhuma movimentacao ou mudanca de status e aceita.
+     * Idempotente: encerrar uma conta ja encerrada nao faz nada.
+     */
+    public void close() {
+        if (status == AccountStatus.CLOSED) {
+            return;
+        }
+        if (balance.signum() != 0) {
+            throw new BusinessException("Nao e possivel encerrar conta com saldo diferente de zero");
+        }
+        this.status = AccountStatus.CLOSED;
+    }
+
     private void ensureActive() {
-        if (status == AccountStatus.BLOCKED) {
-            throw new BusinessException("Conta bloqueada; operacao nao permitida");
+        switch (status) {
+            case BLOCKED -> throw new BusinessException("Conta bloqueada; operacao nao permitida");
+            case CLOSED -> throw new BusinessException("Conta encerrada; operacao nao permitida");
+            default -> { /* ACTIVE: operacao permitida */ }
+        }
+    }
+
+    /** Uma conta encerrada e terminal: nao aceita mais mudanca de status. */
+    private void ensureNotClosed() {
+        if (status == AccountStatus.CLOSED) {
+            throw new BusinessException("Conta encerrada; operacao nao permitida");
         }
     }
 

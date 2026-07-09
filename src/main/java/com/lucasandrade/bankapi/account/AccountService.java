@@ -97,6 +97,17 @@ public class AccountService {
         return AccountResponse.from(repository.save(account));
     }
 
+    /**
+     * Encerra a conta a pedido do titular. Estado terminal: so e permitido com
+     * saldo zero e, uma vez encerrada, a conta nao movimenta nem muda de status.
+     */
+    @Transactional
+    public AccountResponse close(UUID id) {
+        Account account = getAccount(id);
+        account.close();
+        return AccountResponse.from(repository.save(account));
+    }
+
     @Transactional
     public AccountResponse deposit(UUID id, String idempotencyKey, MoneyOperationRequest request) {
         return idempotency.execute(idempotencyKey, AccountResponse.class, () -> {

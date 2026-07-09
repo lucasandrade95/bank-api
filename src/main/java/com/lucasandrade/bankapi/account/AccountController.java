@@ -92,6 +92,11 @@ public class AccountController {
         return ResponseEntity.ok(service.unblock(id));
     }
 
+    @PostMapping("/{id}/close")
+    public ResponseEntity<AccountResponse> close(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.close(id));
+    }
+
     @GetMapping("/{id}/statement")
     public ResponseEntity<PageResponse<TransactionResponse>> statement(
             @PathVariable UUID id,

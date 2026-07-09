@@ -253,6 +253,65 @@ class AccountControllerTest {
     }
 
     @Test
+    void close_zeroBalance_returns200_andRejectsFurtherOperations() throws Exception {
+        String id = createAccount("70010050027");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/close", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"));
+
+        // conta encerrada nao movimenta: deposito cai em 422 (regra de negocio)
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.00 }"))
+                .andExpect(status().isUnprocessableEntity());
+
+        // encerrar de novo e idempotente: continua CLOSED sem erro
+        mockMvc.perform(post("/api/v1/accounts/{id}/close", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"));
+    }
+
+    @Test
+    void close_withBalance_returns422_andKeepsAccountActive() throws Exception {
+        String id = createAccount("70010060090");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 50.00 }"))
+                .andExpect(status().isOk());
+
+        // conta com saldo diferente de zero nao pode ser encerrada
+        mockMvc.perform(post("/api/v1/accounts/{id}/close", id))
+                .andExpect(status().isUnprocessableEntity());
+
+        // segue ativa e operando normalmente
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void close_isTerminal_rejectsBlockAndUnblockWith422() throws Exception {
+        String id = createAccount("70010070052");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/close", id))
+                .andExpect(status().isOk());
+
+        // estado terminal: uma conta encerrada nao volta a (des)bloquear
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", id))
+                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(post("/api/v1/accounts/{id}/unblock", id))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void close_accountNotFound_returns404() throws Exception {
+        mockMvc.perform(post("/api/v1/accounts/{id}/close", "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void transfer_movesFundsAtomically_returns200() throws Exception {
         String source = createAccount("10020030088");
         String destination = createAccount("45678912011");

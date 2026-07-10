@@ -649,6 +649,94 @@ class AccountControllerTest {
     }
 
     @Test
+    void statementSummary_totalsInOutAndNet_withBreakdownByType() throws Exception {
+        String id = createAccount("13087803030");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 50.00 }"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 30.00 }"))
+                .andExpect(status().isOk());
+
+        // 2 depositos (150) - 1 saque (30) => entra 150, sai 30, liquido 120
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.totalIn").value(150.00))
+                .andExpect(jsonPath("$.totalOut").value(30.00))
+                .andExpect(jsonPath("$.net").value(120.00))
+                .andExpect(jsonPath("$.byType.DEPOSIT.count").value(2))
+                .andExpect(jsonPath("$.byType.DEPOSIT.total").value(150.00))
+                .andExpect(jsonPath("$.byType.WITHDRAWAL.count").value(1))
+                .andExpect(jsonPath("$.byType.WITHDRAWAL.total").value(30.00))
+                // tipos sem lancamento no periodo nao aparecem no detalhamento
+                .andExpect(jsonPath("$.byType.TRANSFER_IN").doesNotExist());
+    }
+
+    @Test
+    void statementSummary_newAccount_returnsZeroedTotals() throws Exception {
+        String id = createAccount("59043495050");
+
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.totalIn").value(0))
+                .andExpect(jsonPath("$.totalOut").value(0))
+                .andExpect(jsonPath("$.net").value(0))
+                .andExpect(jsonPath("$.byType").isEmpty());
+    }
+
+    @Test
+    void statementSummary_filtersByPeriod() throws Exception {
+        String id = createAccount("62550780000");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        // janela abrangente: soma o deposito
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary", id)
+                        .param("from", "1900-01-01")
+                        .param("to", "2999-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.totalIn").value(100.00));
+
+        // janela inteiramente no futuro: nada entra na soma
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary", id)
+                        .param("from", "2999-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.totalIn").value(0));
+    }
+
+    @Test
+    void statementSummary_invalidDateRange_returns400() throws Exception {
+        String id = createAccount("47188077002");
+
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary", id)
+                        .param("from", "2026-02-01")
+                        .param("to", "2026-01-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void statementSummary_accountNotFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/summary",
+                        "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void listAccounts_returnsPaginatedEnvelope_containingCreatedAccount() throws Exception {
         String doc = "11122233396";
         createAccount(doc);

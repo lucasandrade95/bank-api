@@ -3,6 +3,7 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
+import com.lucasandrade.bankapi.account.dto.StatementSummaryResponse;
 import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
@@ -108,6 +109,16 @@ public class AccountController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) TransactionType type) {
         return ResponseEntity.ok(service.statement(id, page, size, from, to, type));
+    }
+
+    @GetMapping("/{id}/statement/summary")
+    public ResponseEntity<StatementSummaryResponse> statementSummary(
+            @PathVariable UUID id,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(service.statementSummary(id, from, to));
     }
 
     @GetMapping("/health")

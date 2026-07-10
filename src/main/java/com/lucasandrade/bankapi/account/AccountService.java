@@ -3,6 +3,8 @@ package com.lucasandrade.bankapi.account;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
+import com.lucasandrade.bankapi.account.dto.StatementSummaryResponse;
+import com.lucasandrade.bankapi.account.dto.StatementSummaryResponse.TypeBreakdown;
 import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
@@ -20,6 +22,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -189,6 +194,45 @@ public class AccountService {
                 transactionRepository
                         .findStatement(id, fromInstant, toInstant, type, PageRequest.of(page, size))
                         .map(TransactionResponse::from));
+    }
+
+    /**
+     * Resumo do extrato: totais consolidados do periodo (entradas, saidas, saldo
+     * liquido e detalhe por tipo), em vez da lista de lancamentos.
+     *
+     * <p>{@code from}/{@code to} sao as mesmas datas opcionais e inclusivas do
+     * extrato, interpretadas em UTC no mesmo intervalo semi-aberto. A soma e feita
+     * no banco (uma agregacao {@code group by}), entao o resumo continua barato
+     * mesmo numa conta com milhares de lancamentos — nada e carregado em memoria
+     * para somar. Um periodo invertido ({@code from} depois de {@code to}) volta
+     * 400, igual ao extrato.
+     */
+    @Transactional(readOnly = true)
+    public StatementSummaryResponse statementSummary(UUID id, LocalDate from, LocalDate to) {
+        getAccount(id); // garante 404 para conta inexistente
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("from nao pode ser depois de to");
+        }
+        Instant fromInstant = from == null ? null : from.atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+        List<TransactionRepository.TypeTotal> totals =
+                transactionRepository.summarizeByType(id, fromInstant, toInstant);
+
+        Map<TransactionType, TypeBreakdown> byType = new EnumMap<>(TransactionType.class);
+        long totalCount = 0;
+        BigDecimal totalIn = BigDecimal.ZERO;
+        BigDecimal totalOut = BigDecimal.ZERO;
+        for (TransactionRepository.TypeTotal total : totals) {
+            byType.put(total.getType(), new TypeBreakdown(total.getCount(), total.getTotal()));
+            totalCount += total.getCount();
+            if (total.getType().isCredit()) {
+                totalIn = totalIn.add(total.getTotal());
+            } else {
+                totalOut = totalOut.add(total.getTotal());
+            }
+        }
+        return new StatementSummaryResponse(totalCount, totalIn, totalOut, totalIn.subtract(totalOut), byType);
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */

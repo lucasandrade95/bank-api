@@ -6,7 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
@@ -38,4 +40,32 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                     @Param("to") Instant to,
                                     @Param("type") TransactionType type,
                                     Pageable pageable);
+
+    /**
+     * Totaliza os lancamentos da conta por tipo, opcionalmente restrito a uma
+     * janela de tempo (mesmo intervalo semi-aberto do extrato). A agregacao
+     * (contagem e soma dos valores) e feita no banco com um {@code group by} —
+     * o resumo do extrato nunca carrega os lancamentos um a um para somar em
+     * memoria, entao continua barato numa conta com milhares de movimentacoes.
+     */
+    @Query("""
+            select t.type as type, count(t) as count, coalesce(sum(t.amount), 0) as total
+            from Transaction t
+            where t.accountId = :accountId
+              and (:from is null or t.createdAt >= :from)
+              and (:to is null or t.createdAt < :to)
+            group by t.type
+            """)
+    List<TypeTotal> summarizeByType(@Param("accountId") UUID accountId,
+                                    @Param("from") Instant from,
+                                    @Param("to") Instant to);
+
+    /** Projecao do total agregado de um tipo de lancamento no periodo. */
+    interface TypeTotal {
+        TransactionType getType();
+
+        long getCount();
+
+        BigDecimal getTotal();
+    }
 }

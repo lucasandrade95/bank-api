@@ -121,6 +121,12 @@ public class AccountController {
         return ResponseEntity.ok(service.statementSummary(id, from, to));
     }
 
+    @GetMapping("/{id}/statement/{transactionId}")
+    public ResponseEntity<TransactionResponse> transaction(@PathVariable UUID id,
+                                                           @PathVariable UUID transactionId) {
+        return ResponseEntity.ok(service.findTransaction(id, transactionId));
+    }
+
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.status(HttpStatus.OK).body("UP");

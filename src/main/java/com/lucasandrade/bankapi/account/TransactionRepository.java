@@ -9,9 +9,17 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
+
+    /**
+     * Busca um unico lancamento pelo id, restrito a uma conta. O escopo por
+     * {@code accountId} e proposital: um id de lancamento valido mas de OUTRA
+     * conta devolve vazio (404), em vez de expor o extrato alheio.
+     */
+    Optional<Transaction> findByIdAndAccountId(UUID id, UUID accountId);
 
     /**
      * Extrato da conta, do lancamento mais recente para o mais antigo, paginado

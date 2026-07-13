@@ -782,6 +782,64 @@ class AccountControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    /** Deposita um valor e devolve o id do lancamento gerado (via extrato). */
+    private String depositAndGetTransactionId(String accountId, String amount) throws Exception {
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", accountId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": " + amount + " }"))
+                .andExpect(status().isOk());
+
+        String response = mockMvc.perform(get("/api/v1/accounts/{id}/statement", accountId))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        return objectMapper.readTree(response).get("content").get(0).get("id").asText();
+    }
+
+    @Test
+    void transaction_returnsSingleReceipt() throws Exception {
+        String id = createAccount("15350946056");
+        String txId = depositAndGetTransactionId(id, "100.00");
+
+        // comprovante de um unico lancamento pelo id
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/{txId}", id, txId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(txId))
+                .andExpect(jsonPath("$.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.amount").value(100.00))
+                .andExpect(jsonPath("$.balanceAfter").value(100.00));
+    }
+
+    @Test
+    void transaction_notFound_returns404() throws Exception {
+        String id = createAccount("94848209056");
+
+        // conta existe, mas o lancamento nao
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/{txId}", id,
+                        "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void transaction_fromAnotherAccount_returns404_notLeaked() throws Exception {
+        String owner = createAccount("40056231075");
+        String other = createAccount("70768686016");
+        String txId = depositAndGetTransactionId(owner, "50.00");
+
+        // o lancamento existe, mas e de outra conta: escopo por conta => 404,
+        // nunca expõe o comprovante alheio
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/{txId}", other, txId))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void transaction_accountNotFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement/{txId}",
+                        "00000000-0000-0000-0000-000000000000",
+                        "00000000-0000-0000-0000-000000000001"))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void statement_invalidSize_returns400() throws Exception {
         String id = createAccount("77889900007");

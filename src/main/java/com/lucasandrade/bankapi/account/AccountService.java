@@ -235,6 +235,22 @@ public class AccountService {
         return new StatementSummaryResponse(totalCount, totalIn, totalOut, totalIn.subtract(totalOut), byType);
     }
 
+    /**
+     * Busca um unico lancamento do extrato (o "comprovante" de uma operacao)
+     * pelo seu id, dentro de uma conta.
+     *
+     * <p>A busca e escopada a conta ({@code accountId} do path): um id de
+     * lancamento que existe mas pertence a OUTRA conta devolve 404, nunca o
+     * comprovante alheio. Conta inexistente tambem devolve 404.
+     */
+    @Transactional(readOnly = true)
+    public TransactionResponse findTransaction(UUID accountId, UUID transactionId) {
+        getAccount(accountId); // garante 404 para conta inexistente
+        return transactionRepository.findByIdAndAccountId(transactionId, accountId)
+                .map(TransactionResponse::from)
+                .orElseThrow(() -> new NotFoundException("Lancamento nao encontrado: " + transactionId));
+    }
+
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */
     private void record(Account account, TransactionType type, BigDecimal amount, UUID counterpartyId) {
         transactionRepository.save(

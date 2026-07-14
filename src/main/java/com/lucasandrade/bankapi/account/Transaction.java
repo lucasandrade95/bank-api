@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.account;
 
+import com.lucasandrade.bankapi.shared.Money;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -55,8 +56,8 @@ public class Transaction {
                        BigDecimal balanceAfter, UUID counterpartyAccountId) {
         this.accountId = accountId;
         this.type = type;
-        this.amount = amount;
-        this.balanceAfter = balanceAfter;
+        this.amount = Money.normalize(amount);
+        this.balanceAfter = Money.normalize(balanceAfter);
         this.counterpartyAccountId = counterpartyAccountId;
         this.createdAt = Instant.now();
     }

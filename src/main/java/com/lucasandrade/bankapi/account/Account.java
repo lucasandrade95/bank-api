@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.account;
 
 import com.lucasandrade.bankapi.shared.BusinessException;
+import com.lucasandrade.bankapi.shared.Money;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -35,7 +36,7 @@ public class Account {
     private String document;
 
     @Column(nullable = false, precision = 19, scale = 2)
-    private BigDecimal balance = BigDecimal.ZERO;
+    private BigDecimal balance = Money.normalize(BigDecimal.ZERO);
 
     /**
      * Situacao da conta. Uma conta {@code BLOCKED} rejeita qualquer movimentacao
@@ -65,7 +66,7 @@ public class Account {
     public Account(String ownerName, String document) {
         this.ownerName = ownerName;
         this.document = document;
-        this.balance = BigDecimal.ZERO;
+        this.balance = Money.normalize(BigDecimal.ZERO);
         this.status = AccountStatus.ACTIVE;
         this.createdAt = Instant.now();
     }
@@ -77,7 +78,7 @@ public class Account {
     public void deposit(BigDecimal amount) {
         ensureActive();
         requirePositive(amount);
-        this.balance = this.balance.add(amount);
+        this.balance = Money.normalize(this.balance.add(amount));
     }
 
     /**
@@ -90,7 +91,7 @@ public class Account {
         if (balance.compareTo(amount) < 0) {
             throw new BusinessException("Saldo insuficiente");
         }
-        this.balance = this.balance.subtract(amount);
+        this.balance = Money.normalize(this.balance.subtract(amount));
     }
 
     /** Congela a conta: nenhuma movimentacao passa a ser permitida. Idempotente. */

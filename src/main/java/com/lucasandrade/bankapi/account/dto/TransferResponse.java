@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.account.dto;
 
 import com.lucasandrade.bankapi.account.Account;
+import com.lucasandrade.bankapi.shared.Money;
 
 import java.math.BigDecimal;
 
@@ -14,7 +15,7 @@ public record TransferResponse(
         return new TransferResponse(
                 AccountResponse.from(source),
                 AccountResponse.from(destination),
-                amount
+                Money.normalize(amount)
         );
     }
 }

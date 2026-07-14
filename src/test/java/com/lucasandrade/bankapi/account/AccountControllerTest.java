@@ -10,8 +10,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -54,7 +56,8 @@ class AccountControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.ownerName").value("Lucas Andrade"))
-                .andExpect(jsonPath("$.balance").value(0));
+                // saldo normalizado para 2 casas decimais (centavos), nunca "0" cru
+                .andExpect(jsonPath("$.balance").value(0.00));
     }
 
     @Test
@@ -351,7 +354,7 @@ class AccountControllerTest {
         // rollback: nenhuma conta foi creditada
         mockMvc.perform(get("/api/v1/accounts/{id}", destination))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.balance").value(0));
+                .andExpect(jsonPath("$.balance").value(0.00));
     }
 
     @Test
@@ -858,5 +861,70 @@ class AccountControllerTest {
         mockMvc.perform(get("/api/v1/accounts/{id}/statement", id)
                         .param("page", "-1"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deposit_fractionalScale_isNormalizedToTwoDecimals() throws Exception {
+        String id = createAccount("11122233477");
+
+        // deposito com 1 casa decimal (10.5) => saldo devolvido com 2 casas (10.50)
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.5 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(10.50))
+                // prova a escala exata na serializacao: "10.50", nunca "10.5"
+                .andExpect(content().string(containsString("\"balance\":10.50")));
+
+        // mais um deposito de 10.5: 21.00, nunca "21.0"
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.5 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(21.00))
+                .andExpect(content().string(containsString("\"balance\":21.00")));
+    }
+
+    @Test
+    void statement_normalizesTransactionAmountAndBalance() throws Exception {
+        String id = createAccount("11122233558");
+
+        // deposito de 10.5 => o lancamento no extrato tambem sai normalizado
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.5 }"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/accounts/{id}/statement", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].amount").value(10.50))
+                .andExpect(jsonPath("$.content[0].balanceAfter").value(10.50))
+                .andExpect(content().string(containsString("\"amount\":10.50")))
+                .andExpect(content().string(containsString("\"balanceAfter\":10.50")));
+    }
+
+    @Test
+    void transfer_fractionalScale_isNormalizedInResponse() throws Exception {
+        String source = createAccount("11122233639");
+        String destination = createAccount("11122233710");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        String body = """
+                { "destinationAccountId": "%s", "amount": 20.1 }
+                """.formatted(destination);
+
+        // valor movido e saldos resultantes saem com 2 casas (20.10 / 79.90)
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(20.10))
+                .andExpect(jsonPath("$.source.balance").value(79.90))
+                .andExpect(jsonPath("$.destination.balance").value(20.10))
+                .andExpect(content().string(containsString("\"amount\":20.10")));
     }
 }

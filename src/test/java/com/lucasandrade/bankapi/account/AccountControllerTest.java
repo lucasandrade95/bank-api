@@ -693,7 +693,13 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.totalIn").value(0))
                 .andExpect(jsonPath("$.totalOut").value(0))
                 .andExpect(jsonPath("$.net").value(0))
-                .andExpect(jsonPath("$.byType").isEmpty());
+                .andExpect(jsonPath("$.byType").isEmpty())
+                // mesmo com periodo vazio, os totais saem na escala monetaria canonica
+                // (2 casas) — "0.00", nao "0"; jsonPath coage o numero e esconderia isso,
+                // entao conferimos a forma serializada crua.
+                .andExpect(content().string(containsString("\"totalIn\":0.00")))
+                .andExpect(content().string(containsString("\"totalOut\":0.00")))
+                .andExpect(content().string(containsString("\"net\":0.00")));
     }
 
     @Test

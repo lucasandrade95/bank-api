@@ -10,6 +10,7 @@ import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.IdempotencyService;
+import com.lucasandrade.bankapi.shared.Money;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import com.lucasandrade.bankapi.shared.PageResponse;
 import io.micrometer.core.instrument.Counter;
@@ -224,7 +225,7 @@ public class AccountService {
         BigDecimal totalIn = BigDecimal.ZERO;
         BigDecimal totalOut = BigDecimal.ZERO;
         for (TransactionRepository.TypeTotal total : totals) {
-            byType.put(total.getType(), new TypeBreakdown(total.getCount(), total.getTotal()));
+            byType.put(total.getType(), new TypeBreakdown(total.getCount(), Money.normalize(total.getTotal())));
             totalCount += total.getCount();
             if (total.getType().isCredit()) {
                 totalIn = totalIn.add(total.getTotal());
@@ -232,7 +233,15 @@ public class AccountService {
                 totalOut = totalOut.add(total.getTotal());
             }
         }
-        return new StatementSummaryResponse(totalCount, totalIn, totalOut, totalIn.subtract(totalOut), byType);
+        // Normaliza os totais para a escala monetaria canonica (2 casas), como todo
+        // valor que a API devolve: sem isto, um periodo vazio voltaria "0" em vez de
+        // "0.00" (BigDecimal.ZERO tem escala 0). Ver Money.normalize / decisao de design.
+        return new StatementSummaryResponse(
+                totalCount,
+                Money.normalize(totalIn),
+                Money.normalize(totalOut),
+                Money.normalize(totalIn.subtract(totalOut)),
+                byType);
     }
 
     /**

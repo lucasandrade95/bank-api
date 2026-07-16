@@ -149,6 +149,104 @@ class AccountIdempotencyTest {
                 .andExpect(jsonPath("$.balance").value(30.00));
     }
 
+    /**
+     * A chave e vinculada a requisicao que a gerou: reusada para uma operacao
+     * diferente ela nao e um retry. Antes deste vinculo, o saque abaixo devolvia
+     * 200 com a resposta do deposito e NUNCA debitava — dinheiro sumindo sem erro.
+     */
+    @Test
+    void keyReusedForDifferentOperation_isRejected_andOriginalOperationStands() throws Exception {
+        String id = createAccount("16842973546");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", "shared-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(100.00));
+
+        // mesma chave, outra operacao (saque): 409, nao a resposta do deposito
+        mockMvc.perform(post("/api/v1/accounts/{id}/withdraw", id)
+                        .header("Idempotency-Key", "shared-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 40.00 }"))
+                .andExpect(status().isConflict());
+
+        // o saque recusado nao aconteceu, e o deposito original segue de pe
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(jsonPath("$.balance").value(100.00));
+    }
+
+    @Test
+    void keyReusedWithDifferentAmount_isRejected() throws Exception {
+        String id = createAccount("39053344705");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", "amount-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        // mesma operacao e conta, valor diferente: nao e a mesma requisicao
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", "amount-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 250.00 }"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(jsonPath("$.balance").value(100.00));
+    }
+
+    @Test
+    void keyReusedForSameOperationOnAnotherAccount_isRejected() throws Exception {
+        String first = createAccount("28625587887");
+        String second = createAccount("35524052837");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", first)
+                        .header("Idempotency-Key", "account-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk());
+
+        // mesma operacao e valor, OUTRA conta: a chave nao vale para ela
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", second)
+                        .header("Idempotency-Key", "account-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isConflict());
+
+        // a segunda conta nao recebeu o credito da resposta guardada da primeira
+        mockMvc.perform(get("/api/v1/accounts/{id}", second))
+                .andExpect(jsonPath("$.balance").value(0.00));
+    }
+
+    /**
+     * A impressao digital compara dinheiro, nao texto: um retry que manda 10.5 onde
+     * antes mandou 10.50 e o mesmo pedido e recebe a resposta guardada, nao um 409.
+     */
+    @Test
+    void replayWithEquivalentAmountScale_isStillTreatedAsSameRequest() throws Exception {
+        String id = createAccount("64318709809");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", "scale-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.50 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(10.50));
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", "scale-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 10.5 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(10.50));
+
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(jsonPath("$.balance").value(10.50));
+    }
+
     @Test
     void failedOperation_doesNotConsumeKey_soRetryCanSucceed() throws Exception {
         String id = createAccount("47382915050");

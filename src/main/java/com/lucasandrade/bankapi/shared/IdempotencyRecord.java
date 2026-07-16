@@ -18,6 +18,10 @@ import java.time.Instant;
  * falha (ex.: saldo insuficiente), o rollback tambem desfaz a chave — entao so
  * operacoes concluidas com sucesso ficam memoizadas, e uma tentativa que
  * realmente falhou pode ser refeita com a mesma chave.
+ *
+ * <p>Junto da resposta guarda a "impressao digital" da requisicao que gerou a
+ * chave, para que a chave so responda a repeticoes daquela mesma requisicao —
+ * ver {@link IdempotencyService}.
  */
 @Entity
 @Table(name = "idempotency_keys")
@@ -27,6 +31,14 @@ public class IdempotencyRecord {
     @Id
     @Column(length = 255)
     private String id;
+
+    /**
+     * Hash SHA-256 (hex) da requisicao que gerou esta chave: identifica operacao,
+     * conta e valor. Uma repeticao so recebe a resposta guardada se a impressao
+     * digital bater — reuso da chave com outra requisicao vira 409.
+     */
+    @Column(nullable = false, length = 64)
+    private String requestFingerprint;
 
     /** Corpo da resposta original serializado em JSON, devolvido nas repeticoes. */
     @Column(nullable = false, length = 4000)
@@ -39,14 +51,19 @@ public class IdempotencyRecord {
         // exigido pelo JPA
     }
 
-    public IdempotencyRecord(String id, String responseBody) {
+    public IdempotencyRecord(String id, String requestFingerprint, String responseBody) {
         this.id = id;
+        this.requestFingerprint = requestFingerprint;
         this.responseBody = responseBody;
         this.createdAt = Instant.now();
     }
 
     public String getId() {
         return id;
+    }
+
+    public String getRequestFingerprint() {
+        return requestFingerprint;
     }
 
     public String getResponseBody() {

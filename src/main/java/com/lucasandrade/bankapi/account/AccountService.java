@@ -116,7 +116,8 @@ public class AccountService {
 
     @Transactional
     public AccountResponse deposit(UUID id, String idempotencyKey, MoneyOperationRequest request) {
-        return idempotency.execute(idempotencyKey, AccountResponse.class, () -> {
+        String requestData = requestData("deposit", id, request.amount());
+        return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
             Account account = getAccount(id);
             account.deposit(request.amount());
             repository.save(account);
@@ -128,7 +129,8 @@ public class AccountService {
 
     @Transactional
     public AccountResponse withdraw(UUID id, String idempotencyKey, MoneyOperationRequest request) {
-        return idempotency.execute(idempotencyKey, AccountResponse.class, () -> {
+        String requestData = requestData("withdraw", id, request.amount());
+        return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
             Account account = getAccount(id);
             account.withdraw(request.amount());
             repository.save(account);
@@ -145,7 +147,9 @@ public class AccountService {
      */
     @Transactional
     public TransferResponse transfer(UUID sourceId, String idempotencyKey, TransferRequest request) {
-        return idempotency.execute(idempotencyKey, TransferResponse.class, () -> {
+        String requestData = requestData(
+                "transfer", sourceId, request.amount(), request.destinationAccountId());
+        return idempotency.execute(idempotencyKey, requestData, TransferResponse.class, () -> {
             if (sourceId.equals(request.destinationAccountId())) {
                 throw new BusinessException("Conta origem e destino devem ser diferentes");
             }
@@ -258,6 +262,26 @@ public class AccountService {
         return transactionRepository.findByIdAndAccountId(transactionId, accountId)
                 .map(TransactionResponse::from)
                 .orElseThrow(() -> new NotFoundException("Lancamento nao encontrado: " + transactionId));
+    }
+
+    /**
+     * Descricao canonica de uma operacao com dinheiro, usada pela idempotencia para
+     * saber se uma repeticao da mesma {@code Idempotency-Key} e o MESMO pedido.
+     *
+     * <p>O valor passa por {@link Money#normalize} para que a comparacao seja de
+     * dinheiro, e nao de texto: um retry que manda {@code 10.5} onde antes mandou
+     * {@code 10.50} e a mesma operacao e deve receber a resposta guardada, nao um 409.
+     */
+    private static String requestData(String operation, UUID accountId, BigDecimal amount,
+                                      Object... extras) {
+        StringBuilder sb = new StringBuilder()
+                .append(operation).append('|')
+                .append(accountId).append('|')
+                .append(Money.normalize(amount));
+        for (Object extra : extras) {
+            sb.append('|').append(extra);
+        }
+        return sb.toString();
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */

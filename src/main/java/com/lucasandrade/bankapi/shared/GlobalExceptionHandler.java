@@ -71,6 +71,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * A {@code Idempotency-Key} foi reenviada com uma requisicao diferente da que
+     * ela ja atendeu. Nao e um retry, e reuso indevido da chave: devolver a resposta
+     * guardada faria a nova operacao sumir sem erro. Volta 409 para o cliente usar
+     * uma chave nova por operacao.
+     */
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ApiError> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        return build(HttpStatus.CONFLICT, List.of(ex.getMessage()));
+    }
+
+    /**
      * Violacao de restricao do banco, hoje o caso de duas requisicoes concorrentes
      * com a mesma {@code Idempotency-Key} (a chave e PRIMARY KEY): a segunda gravacao
      * viola a unicidade. Volta 409 para o cliente saber que a operacao ja esta sendo

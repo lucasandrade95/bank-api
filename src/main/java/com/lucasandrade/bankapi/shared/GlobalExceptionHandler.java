@@ -82,15 +82,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Violacao de restricao do banco, hoje o caso de duas requisicoes concorrentes
-     * com a mesma {@code Idempotency-Key} (a chave e PRIMARY KEY): a segunda gravacao
-     * viola a unicidade. Volta 409 para o cliente saber que a operacao ja esta sendo
-     * processada e nao deve ser refeita.
+     * Rede de seguranca para violacao de restricao do banco: duas requisicoes
+     * concorrentes colidiram numa coluna unica e a segunda gravacao foi recusada.
+     * O caso conhecido e a mesma {@code Idempotency-Key} enviada em paralelo (a chave
+     * e PRIMARY KEY); a operacao ja esta em andamento e nao deve ser refeita.
+     *
+     * <p>Este handler nao sabe QUAL restricao falhou, entao a mensagem e generica de
+     * proposito — quem conhece a causa deve traduzi-la antes de chegar aqui, como faz
+     * {@code AccountService.create} com o documento duplicado (422 com mensagem
+     * especifica). Cravar uma causa aqui produziria respostas enganosas para as demais.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
         return build(HttpStatus.CONFLICT,
-                List.of("Requisicao ja em processamento (Idempotency-Key duplicada)"));
+                List.of("Conflito de concorrencia na gravacao, requisicao ja em processamento"));
     }
 
     /**

@@ -15,6 +15,7 @@ import com.lucasandrade.bankapi.shared.NotFoundException;
 import com.lucasandrade.bankapi.shared.PageResponse;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,9 @@ import java.util.UUID;
 
 @Service
 public class AccountService {
+
+    /** Mesma mensagem para o duplicado detectado na checagem e para o pego pelo banco. */
+    private static final String DUPLICATE_DOCUMENT_MESSAGE = "Ja existe conta para o documento informado";
 
     private final AccountRepository repository;
     private final TransactionRepository transactionRepository;
@@ -60,13 +64,34 @@ public class AccountService {
                 .register(registry);
     }
 
+    /**
+     * Cria uma conta com saldo zero. Um documento (CPF) so pode ter uma conta.
+     *
+     * <p>A checagem previa ({@code existsByDocument}) e um <b>check-then-act</b>: entre
+     * o "ja existe?" e o INSERT ha uma janela em que outra requisicao com o mesmo
+     * documento pode inserir primeiro. Quem perde a corrida esbarra na restricao
+     * UNIQUE da coluna — e o banco, nao a checagem, que garante a unicidade de fato.
+     * Por isso a violacao e traduzida para a MESMA {@link BusinessException} do
+     * caminho feliz: o cliente recebe 422 com a mesma mensagem, tenha ele perdido a
+     * corrida ou nao. Sem essa traducao a excecao subia para o handler generico de
+     * {@code DataIntegrityViolationException} e virava um 409 falando de
+     * "Idempotency-Key duplicada" — resposta enganosa para um CPF repetido.
+     *
+     * <p>O {@code saveAndFlush} e necessario para o INSERT (e a violacao) acontecerem
+     * aqui dentro do {@code try}, e nao la no commit da transacao, fora do alcance
+     * deste catch.
+     */
     @Transactional
     public AccountResponse create(CreateAccountRequest request) {
         if (repository.existsByDocument(request.document())) {
-            throw new BusinessException("Ja existe conta para o documento informado");
+            throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
         }
         Account account = new Account(request.ownerName(), request.document());
-        return AccountResponse.from(repository.save(account));
+        try {
+            return AccountResponse.from(repository.saveAndFlush(account));
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
+        }
     }
 
     @Transactional(readOnly = true)

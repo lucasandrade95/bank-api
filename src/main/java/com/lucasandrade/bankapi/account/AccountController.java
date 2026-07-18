@@ -53,8 +53,9 @@ public class AccountController {
     @GetMapping
     public ResponseEntity<PageResponse<AccountResponse>> list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(service.list(page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) AccountStatus status) {
+        return ResponseEntity.ok(service.list(page, size, status));
     }
 
     @GetMapping("/{id}")

@@ -104,11 +104,16 @@ public class AccountService {
      * de contas cresce sem limite, a listagem nunca e devolvida por inteiro: o
      * cliente pede uma pagina ({@code page}/{@code size}) e recebe os metadados
      * para saber se ha mais — mesmo envelope {@link PageResponse} do extrato.
+     *
+     * <p>{@code status} e um filtro opcional por situacao da conta (ex.: so as
+     * {@code ACTIVE}, para esconder contas bloqueadas ou encerradas). Quando
+     * {@code null}, a listagem traz contas de qualquer situacao. A filtragem e
+     * feita no banco (parametro anulavel), mesmo padrao do filtro por tipo do extrato.
      */
     @Transactional(readOnly = true)
-    public PageResponse<AccountResponse> list(int page, int size) {
+    public PageResponse<AccountResponse> list(int page, int size, AccountStatus status) {
         return PageResponse.from(
-                repository.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size))
+                repository.findByStatus(status, PageRequest.of(page, size))
                         .map(AccountResponse::from));
     }
 

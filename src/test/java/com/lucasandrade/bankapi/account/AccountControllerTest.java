@@ -779,6 +779,48 @@ class AccountControllerTest {
     }
 
     @Test
+    void listAccounts_filtersByStatus() throws Exception {
+        String active = createAccount("81472936582");
+        String blocked = createAccount("39261847013");
+
+        // congela uma das contas para diferencia-la pela situacao
+        mockMvc.perform(post("/api/v1/accounts/{id}/block", blocked))
+                .andExpect(status().isOk());
+
+        // filtro BLOCKED: traz a conta congelada, nunca a ativa
+        mockMvc.perform(get("/api/v1/accounts")
+                        .param("size", "100")
+                        .param("status", "BLOCKED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id=='" + blocked + "')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.id=='" + active + "')]").isEmpty())
+                // toda conta devolvida no filtro esta de fato BLOCKED
+                .andExpect(jsonPath("$.content[?(@.status!='BLOCKED')]").isEmpty());
+
+        // filtro ACTIVE: traz a conta ativa, nunca a congelada
+        mockMvc.perform(get("/api/v1/accounts")
+                        .param("size", "100")
+                        .param("status", "ACTIVE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id=='" + active + "')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.id=='" + blocked + "')]").isEmpty());
+
+        // sem filtro: as duas contas aparecem
+        mockMvc.perform(get("/api/v1/accounts").param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id=='" + active + "')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.id=='" + blocked + "')]").isNotEmpty());
+    }
+
+    @Test
+    void listAccounts_invalidStatus_returns400() throws Exception {
+        // situacao inexistente cai no corpo de erro padrao (type mismatch do enum)
+        mockMvc.perform(get("/api/v1/accounts").param("status", "NAO_EXISTE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void listAccounts_invalidPagination_returns400() throws Exception {
         // size acima do maximo permitido (100)
         mockMvc.perform(get("/api/v1/accounts").param("size", "101"))

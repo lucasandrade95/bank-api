@@ -7,10 +7,12 @@ import com.lucasandrade.bankapi.account.dto.StatementSummaryResponse;
 import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
+import com.lucasandrade.bankapi.shared.IdempotencyRecord;
 import com.lucasandrade.bankapi.shared.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -65,21 +67,24 @@ public class AccountController {
 
     @PostMapping("/{id}/deposit")
     public ResponseEntity<AccountResponse> deposit(@PathVariable UUID id,
-                                                   @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                                   @RequestHeader(value = "Idempotency-Key", required = false)
+                                                   @Size(max = IdempotencyRecord.KEY_MAX_LENGTH, message = "Idempotency-Key deve ter no maximo 255 caracteres") String idempotencyKey,
                                                    @Valid @RequestBody MoneyOperationRequest request) {
         return ResponseEntity.ok(service.deposit(id, idempotencyKey, request));
     }
 
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<AccountResponse> withdraw(@PathVariable UUID id,
-                                                    @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                                    @RequestHeader(value = "Idempotency-Key", required = false)
+                                                    @Size(max = IdempotencyRecord.KEY_MAX_LENGTH, message = "Idempotency-Key deve ter no maximo 255 caracteres") String idempotencyKey,
                                                     @Valid @RequestBody MoneyOperationRequest request) {
         return ResponseEntity.ok(service.withdraw(id, idempotencyKey, request));
     }
 
     @PostMapping("/{id}/transfer")
     public ResponseEntity<TransferResponse> transfer(@PathVariable UUID id,
-                                                     @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                                     @RequestHeader(value = "Idempotency-Key", required = false)
+                                                     @Size(max = IdempotencyRecord.KEY_MAX_LENGTH, message = "Idempotency-Key deve ter no maximo 255 caracteres") String idempotencyKey,
                                                      @Valid @RequestBody TransferRequest request) {
         return ResponseEntity.ok(service.transfer(id, idempotencyKey, request));
     }

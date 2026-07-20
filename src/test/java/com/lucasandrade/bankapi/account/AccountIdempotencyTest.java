@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.account;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lucasandrade.bankapi.shared.IdempotencyRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -245,6 +246,44 @@ class AccountIdempotencyTest {
 
         mockMvc.perform(get("/api/v1/accounts/{id}", id))
                 .andExpect(jsonPath("$.balance").value(10.50));
+    }
+
+    /**
+     * A chave e persistida numa coluna de tamanho fixo. Uma chave grande demais e
+     * recusada na borda com 400 (corpo de erro padrao) e SEM efeito colateral —
+     * antes desta validacao ela estouraria a coluna no flush e o handler generico
+     * de integridade a leria, sem saber a causa, como um 409 de concorrencia enganoso.
+     */
+    @Test
+    void depositWithOversizedKey_isRejectedWith400_andHasNoEffect() throws Exception {
+        String id = createAccount("24681357928");
+        String oversizedKey = "k".repeat(IdempotencyRecord.KEY_MAX_LENGTH + 1);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", oversizedKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.messages").isArray());
+
+        // a operacao recusada nao aconteceu: saldo continua zero
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(jsonPath("$.balance").value(0.00));
+    }
+
+    /** Uma chave no limite exato do tamanho ainda e aceita e opera normalmente. */
+    @Test
+    void depositWithKeyAtMaxLength_isAccepted() throws Exception {
+        String id = createAccount("13579246828");
+        String maxKey = "k".repeat(IdempotencyRecord.KEY_MAX_LENGTH);
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", id)
+                        .header("Idempotency-Key", maxKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"amount\": 100.00 }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(100.00));
     }
 
     @Test

@@ -27,9 +27,18 @@ import java.time.Instant;
 @Table(name = "idempotency_keys")
 public class IdempotencyRecord {
 
+    /**
+     * Tamanho maximo da {@code Idempotency-Key}, compartilhado entre a coluna e a
+     * validacao de borda no controller — assim uma chave que caberia no contrato
+     * nunca estoura a coluna, e uma chave grande demais e recusada com 400 antes
+     * de virar uma violacao de integridade (que o handler generico leria, sem
+     * saber a causa, como um 409 de concorrencia enganoso).
+     */
+    public static final int KEY_MAX_LENGTH = 255;
+
     /** A propria {@code Idempotency-Key} enviada pelo cliente (unica por operacao). */
     @Id
-    @Column(length = 255)
+    @Column(length = KEY_MAX_LENGTH)
     private String id;
 
     /**

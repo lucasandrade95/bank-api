@@ -9,6 +9,7 @@ import com.lucasandrade.bankapi.account.dto.TransactionResponse;
 import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
+import com.lucasandrade.bankapi.shared.DateRange;
 import com.lucasandrade.bankapi.shared.IdempotencyService;
 import com.lucasandrade.bankapi.shared.Money;
 import com.lucasandrade.bankapi.shared.NotFoundException;
@@ -21,9 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -207,9 +206,8 @@ public class AccountService {
      *
      * <p>{@code from} e {@code to} sao datas opcionais (inclusivas nas duas pontas)
      * que restringem o extrato a um periodo — util para o cliente pedir, por
-     * exemplo, "o extrato de janeiro". As datas sao interpretadas em UTC e viram
-     * um intervalo semi-aberto {@code [from 00:00, (to+1 dia) 00:00)}, para o dia
-     * final entrar inteiro.
+     * exemplo, "o extrato de janeiro". A validacao da ordem e a conversao para o
+     * intervalo semi-aberto em UTC ficam no {@link DateRange}.
      *
      * <p>{@code type} e um filtro opcional por tipo de lancamento (ex.: so os
      * depositos, ou so as pernas de saida de transferencia) — combinavel com o
@@ -220,14 +218,11 @@ public class AccountService {
                                                        LocalDate from, LocalDate to,
                                                        TransactionType type) {
         getAccount(id); // garante 404 para conta inexistente
-        if (from != null && to != null && from.isAfter(to)) {
-            throw new IllegalArgumentException("from nao pode ser depois de to");
-        }
-        Instant fromInstant = from == null ? null : from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        DateRange range = DateRange.of(from, to);
         return PageResponse.from(
                 transactionRepository
-                        .findStatement(id, fromInstant, toInstant, type, PageRequest.of(page, size))
+                        .findStatement(id, range.fromInstant(), range.toInstant(), type,
+                                PageRequest.of(page, size))
                         .map(TransactionResponse::from));
     }
 
@@ -236,23 +231,19 @@ public class AccountService {
      * liquido e detalhe por tipo), em vez da lista de lancamentos.
      *
      * <p>{@code from}/{@code to} sao as mesmas datas opcionais e inclusivas do
-     * extrato, interpretadas em UTC no mesmo intervalo semi-aberto. A soma e feita
+     * extrato, com a mesma validacao e conversao encapsuladas no {@link DateRange}
+     * (intervalo semi-aberto em UTC; periodo invertido volta 400). A soma e feita
      * no banco (uma agregacao {@code group by}), entao o resumo continua barato
      * mesmo numa conta com milhares de lancamentos — nada e carregado em memoria
-     * para somar. Um periodo invertido ({@code from} depois de {@code to}) volta
-     * 400, igual ao extrato.
+     * para somar.
      */
     @Transactional(readOnly = true)
     public StatementSummaryResponse statementSummary(UUID id, LocalDate from, LocalDate to) {
         getAccount(id); // garante 404 para conta inexistente
-        if (from != null && to != null && from.isAfter(to)) {
-            throw new IllegalArgumentException("from nao pode ser depois de to");
-        }
-        Instant fromInstant = from == null ? null : from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        DateRange range = DateRange.of(from, to);
 
         List<TransactionRepository.TypeTotal> totals =
-                transactionRepository.summarizeByType(id, fromInstant, toInstant);
+                transactionRepository.summarizeByType(id, range.fromInstant(), range.toInstant());
 
         Map<TransactionType, TypeBreakdown> byType = new EnumMap<>(TransactionType.class);
         long totalCount = 0;

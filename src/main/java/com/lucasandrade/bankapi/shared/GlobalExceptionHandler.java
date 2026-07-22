@@ -1,12 +1,15 @@
 package com.lucasandrade.bankapi.shared;
 
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -16,6 +19,8 @@ import java.util.List;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(NotFoundException ex) {
@@ -103,10 +108,50 @@ public class GlobalExceptionHandler {
      * unica anotacao Bean Validation — hoje o intervalo de datas do extrato com
      * {@code from} depois de {@code to}. Fica em 400 (entrada malformada), no mesmo
      * corpo padrao dos demais erros de parametro.
+     *
+     * <p>O tipo e a {@link InvalidRequestException} nossa, e nao
+     * {@code IllegalArgumentException}: so chega aqui o que foi lancado de proposito
+     * como erro de entrada. Ver a justificativa no javadoc da propria excecao.
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException ex) {
         return build(HttpStatus.BAD_REQUEST, List.of(ex.getMessage()));
+    }
+
+    /**
+     * Rede de seguranca final: nada escapa do corpo de erro padrao. Sem ela o Spring
+     * responderia com o corpo de erro dele, fora do formato {@link ApiError} que o
+     * resto da API mantem.
+     *
+     * <p>Sao dois casos bem diferentes, e por isso o {@code instanceof}:
+     *
+     * <p><b>1. O Spring MVC ja sabe o status.</b> Rota inexistente (404), metodo HTTP
+     * nao suportado (405), Content-Type invalido (415) — essas excecoes implementam
+     * {@link ErrorResponse} e carregam o status correto. Aqui so o corpo e reescrito;
+     * o status e preservado. Tratar tudo como 500 transformaria um simples erro de
+     * rota do cliente numa falha aparente do servidor. ({@code ErrorResponse} e uma
+     * interface, nao um {@code Throwable}, entao nao da para registra-la num
+     * {@code @ExceptionHandler} proprio — dai a checagem em tempo de execucao.)
+     *
+     * <p><b>2. Falha nao prevista.</b> Vira 500 com mensagem <b>fixa e generica</b>: a
+     * mensagem de uma excecao inesperada e detalhe interno (nome de tabela, coluna,
+     * caminho de arquivo, trecho de SQL) e nao deve vazar para o cliente. O
+     * diagnostico fica no log do servidor com o stack trace completo — e como o
+     * {@code RequestIdFilter} poe o id da requisicao no MDC, a linha de log sai
+     * correlacionada com o {@code X-Request-Id} que o cliente recebeu, entao da para
+     * achar exatamente esta falha a partir do que ele reportar.
+     *
+     * <p>Os handlers especificos acima continuam ganhando deste: o Spring escolhe
+     * sempre a correspondencia mais proxima do tipo lancado.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnexpected(Exception ex) {
+        if (ex instanceof ErrorResponse errorResponse) {
+            HttpStatus status = HttpStatus.valueOf(errorResponse.getStatusCode().value());
+            return build(status, List.of(status.getReasonPhrase()));
+        }
+        log.error("Falha nao tratada ao processar a requisicao", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, List.of("Erro interno inesperado"));
     }
 
     /** Violacoes em parametros de requisicao (ex.: @Min/@Max em page/size). */

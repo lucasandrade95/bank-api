@@ -16,7 +16,7 @@ import java.time.ZoneOffset;
  * {@code null} (filtro aberto daquele lado).
  *
  * <p>Um periodo invertido ({@code from} depois de {@code to}) e um pedido
- * logicamente impossivel: a fabrica lanca {@link IllegalArgumentException}, que o
+ * logicamente impossivel: a fabrica lanca {@link InvalidRequestException}, que o
  * handler global traduz para 400 no corpo de erro padrao.
  */
 public record DateRange(Instant fromInstant, Instant toInstant) {
@@ -28,7 +28,7 @@ public record DateRange(Instant fromInstant, Instant toInstant) {
      */
     public static DateRange of(LocalDate from, LocalDate to) {
         if (from != null && to != null && from.isAfter(to)) {
-            throw new IllegalArgumentException("from nao pode ser depois de to");
+            throw new InvalidRequestException("from nao pode ser depois de to");
         }
         Instant fromInstant = from == null ? null : from.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant toInstant = to == null ? null : to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();

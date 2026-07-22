@@ -60,7 +60,7 @@ class DateRangeTest {
     @Test
     void rejectsInvertedRange() {
         assertThatThrownBy(() -> DateRange.of(LocalDate.of(2026, 1, 31), LocalDate.of(2026, 1, 1)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidRequestException.class)
                 .hasMessageContaining("from nao pode ser depois de to");
     }
 }

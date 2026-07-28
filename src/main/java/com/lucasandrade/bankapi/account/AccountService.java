@@ -16,6 +16,7 @@ import com.lucasandrade.bankapi.shared.NotFoundException;
 import com.lucasandrade.bankapi.shared.PageResponse;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class AccountService {
     private final AccountRepository repository;
     private final TransactionRepository transactionRepository;
     private final IdempotencyService idempotency;
+    private final DailyDebitLimit dailyDebitLimit;
 
     // Metricas de negocio: contam operacoes concluidas, expostas em /actuator/metrics.
     private final Counter depositCounter;
@@ -46,10 +48,12 @@ public class AccountService {
     public AccountService(AccountRepository repository,
                           TransactionRepository transactionRepository,
                           IdempotencyService idempotency,
-                          MeterRegistry meterRegistry) {
+                          MeterRegistry meterRegistry,
+                          @Value("${bank.limits.daily-debit}") BigDecimal dailyDebitLimit) {
         this.repository = repository;
         this.transactionRepository = transactionRepository;
         this.idempotency = idempotency;
+        this.dailyDebitLimit = new DailyDebitLimit(dailyDebitLimit);
         this.depositCounter = operationCounter(meterRegistry, "deposit");
         this.withdrawalCounter = operationCounter(meterRegistry, "withdrawal");
         this.transferCounter = operationCounter(meterRegistry, "transfer");
@@ -156,12 +160,23 @@ public class AccountService {
         });
     }
 
+    /**
+     * Saca um valor da conta, respeitando o saldo e o limite diario de debito.
+     *
+     * <p>A checagem do limite fica DEPOIS do debito no dominio de proposito: assim
+     * conta bloqueada/encerrada e saldo insuficiente continuam tendo precedencia na
+     * mensagem de erro — quem esta com a conta congelada precisa ouvir isso, nao
+     * "limite excedido". Nada e persistido quando o limite estoura: a
+     * {@code BusinessException} faz rollback da transacao, e o saldo alterado em
+     * memoria morre junto.
+     */
     @Transactional
     public AccountResponse withdraw(UUID id, String idempotencyKey, MoneyOperationRequest request) {
         String requestData = requestData("withdraw", id, request.amount());
         return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
             Account account = getAccount(id);
             account.withdraw(request.amount());
+            ensureWithinDailyDebitLimit(id, request.amount());
             repository.save(account);
             record(account, TransactionType.WITHDRAWAL, request.amount(), null);
             withdrawalCounter.increment();
@@ -173,6 +188,11 @@ public class AccountService {
      * Transfere um valor da conta origem para a conta destino de forma atomica:
      * debito e credito acontecem na mesma transacao, entao qualquer falha
      * (ex.: saldo insuficiente) faz rollback total e nenhum saldo e alterado.
+     *
+     * <p>A transferencia consome o limite diario de debito da conta ORIGEM (e so
+     * dela): quem envia esta tirando dinheiro da propria conta, quem recebe nao.
+     * Fosse o limite so do saque, esvaziar uma conta comprometida seria uma
+     * transferencia — o limite existe para cobrir toda saida de dinheiro.
      */
     @Transactional
     public TransferResponse transfer(UUID sourceId, String idempotencyKey, TransferRequest request) {
@@ -186,6 +206,7 @@ public class AccountService {
             Account destination = getAccount(request.destinationAccountId());
 
             source.withdraw(request.amount());
+            ensureWithinDailyDebitLimit(sourceId, request.amount());
             destination.deposit(request.amount());
 
             repository.save(source);
@@ -303,6 +324,26 @@ public class AccountService {
             sb.append('|').append(extra);
         }
         return sb.toString();
+    }
+
+    /**
+     * Recusa a operacao se ela estourar o limite diario de debito da conta.
+     *
+     * <p>O quanto ja saiu hoje vem de uma agregacao no banco (saques e
+     * transferencias enviadas desde a meia-noite UTC); a decisao em si mora no
+     * {@link DailyDebitLimit}. A soma NAO inclui a operacao em curso: o lancamento
+     * dela so e gravado depois desta checagem.
+     *
+     * <p>Isto e um check-then-act — duas operacoes concorrentes na mesma conta
+     * poderiam ler o mesmo "ja usado hoje" e ambas passar. Quem fecha essa janela e
+     * o travamento otimista que ja existe: as duas alteram o saldo da MESMA conta,
+     * entao a segunda gravacao esbarra na {@code @Version}, recebe 409 e, ao ser
+     * repetida, refaz esta checagem com o total ja atualizado.
+     */
+    private void ensureWithinDailyDebitLimit(UUID accountId, BigDecimal amount) {
+        BigDecimal usedToday = transactionRepository.sumAmountByTypeSince(
+                accountId, TransactionType.debitTypes(), DailyDebitLimit.windowStart());
+        dailyDebitLimit.ensureAllows(usedToday, amount);
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,6 +68,24 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<TypeTotal> summarizeByType(@Param("accountId") UUID accountId,
                                     @Param("from") Instant from,
                                     @Param("to") Instant to);
+
+    /**
+     * Soma dos valores lancados na conta a partir de um instante, restrita a um
+     * conjunto de tipos. Usada pelo limite diario de debito para saber quanto ja
+     * saiu da conta hoje (saques e transferencias enviadas desde a meia-noite UTC).
+     *
+     * <p>A soma e feita no banco, como no resumo do extrato: o limite nunca
+     * carrega os lancamentos do dia para totalizar em memoria.
+     */
+    @Query("""
+            select coalesce(sum(t.amount), 0) from Transaction t
+            where t.accountId = :accountId
+              and t.type in :types
+              and t.createdAt >= :from
+            """)
+    BigDecimal sumAmountByTypeSince(@Param("accountId") UUID accountId,
+                                    @Param("types") Collection<TransactionType> types,
+                                    @Param("from") Instant from);
 
     /** Projecao do total agregado de um tipo de lancamento no periodo. */
     interface TypeTotal {

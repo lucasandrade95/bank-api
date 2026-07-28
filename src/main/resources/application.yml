@@ -25,6 +25,13 @@ security:
     secret: ${SECURITY_JWT_SECRET:change-me-dev-secret-please-override-in-prod-0123456789}
     expiration-minutes: 60
 
+# Regras de negocio configuraveis. O limite diario de debito e o teto do que pode
+# SAIR de uma conta num mesmo dia UTC (saques + transferencias enviadas); creditos
+# nao contam. Sobrescreva por ambiente com BANK_LIMITS_DAILY_DEBIT.
+bank:
+  limits:
+    daily-debit: 10000.00
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

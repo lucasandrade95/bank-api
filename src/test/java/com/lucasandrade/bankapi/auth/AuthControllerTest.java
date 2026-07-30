@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -68,6 +69,57 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Senha maior do que o bcrypt considera (72 bytes) e recusada na borda, em vez
+     * de ser aceita e truncada em silencio — o que guardaria o hash de um pedaco
+     * dela e faria o final digitado nao proteger nada.
+     */
+    @Test
+    void register_passwordPastBcryptLimit_returns400() throws Exception {
+        String body = """
+                { "username": "heidi", "password": "%s" }
+                """.formatted("a".repeat(73));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.messages[0]").value(containsString("limite do bcrypt")));
+    }
+
+    /** O limite e usavel: uma senha de exatamente 72 bytes entra e autentica. */
+    @Test
+    void register_passwordAtBcryptLimit_returns201_andLoginWorks() throws Exception {
+        String password = "a".repeat(72);
+        register("ivan", password);
+
+        String body = """
+                { "username": "ivan", "password": "%s" }
+                """.formatted(password);
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists());
+    }
+
+    /**
+     * O teto e em bytes, nao em caracteres: 37 caracteres acentuados sao 74 bytes
+     * em UTF-8 e seriam truncados, embora um limite em caracteres os aceitasse.
+     */
+    @Test
+    void register_accentedPasswordPastBcryptLimitInBytes_returns400() throws Exception {
+        String body = """
+                { "username": "judy", "password": "%s" }
+                """.formatted("\\u00e1".repeat(37));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.messages[0]").value(containsString("limite do bcrypt")));
     }
 
     @Test

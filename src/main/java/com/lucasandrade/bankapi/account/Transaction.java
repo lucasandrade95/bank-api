@@ -34,11 +34,11 @@ public class Transaction {
     @Column(nullable = false)
     private TransactionType type;
 
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(nullable = false, precision = Money.PRECISION, scale = Money.SCALE)
     private BigDecimal amount;
 
     /** Saldo da conta logo apos este lancamento — usado para exibir saldo corrente no extrato. */
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(nullable = false, precision = Money.PRECISION, scale = Money.SCALE)
     private BigDecimal balanceAfter;
 
     /** Conta envolvida do outro lado, presente apenas em transferencias. */

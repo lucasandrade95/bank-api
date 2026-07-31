@@ -23,6 +23,26 @@ public final class Money {
     /** Casas decimais de todo valor monetario (centavos). */
     public static final int SCALE = 2;
 
+    /**
+     * Digitos totais de toda coluna monetaria. Constante de compilacao para poder
+     * ser usada nas proprias anotacoes {@code @Column(precision = ..., scale = ...)}
+     * das entidades — assim a capacidade da coluna e a regra que a protege
+     * ({@link #MAX}) saem da mesma fonte, e mudar uma muda a outra.
+     */
+    public static final int PRECISION = 19;
+
+    /**
+     * Maior valor monetario representavel: o que cabe em {@code NUMERIC(19,2)},
+     * ou seja {@code 99999999999999999.99}. Passar disto nao e "um numero grande",
+     * e um valor que <b>nao cabe na coluna</b> — a gravacao falharia no banco.
+     * Por isso o dominio recusa antes ({@code Account.deposit}), com uma regra de
+     * negocio clara, em vez de deixar estourar no flush.
+     */
+    public static final BigDecimal MAX = BigDecimal.ONE
+            .movePointRight(PRECISION - SCALE)          // 10^17
+            .subtract(BigDecimal.ONE.movePointLeft(SCALE)) // menos um centavo
+            .setScale(SCALE, RoundingMode.UNNECESSARY);
+
     private Money() {
     }
 

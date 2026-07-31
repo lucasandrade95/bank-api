@@ -35,7 +35,7 @@ public class Account {
     @Column(nullable = false, unique = true, length = 11)
     private String document;
 
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(nullable = false, precision = Money.PRECISION, scale = Money.SCALE)
     private BigDecimal balance = Money.normalize(BigDecimal.ZERO);
 
     /**
@@ -74,11 +74,16 @@ public class Account {
     /**
      * Credita um valor no saldo. O valor deve ser positivo — regra reforcada
      * aqui no dominio, independente da validacao de entrada.
+     *
+     * <p>O saldo resultante tambem precisa caber em {@link Money#MAX}: ver
+     * {@link #ensureFitsBalance}.
      */
     public void deposit(BigDecimal amount) {
         ensureActive();
         requirePositive(amount);
-        this.balance = Money.normalize(this.balance.add(amount));
+        BigDecimal newBalance = Money.normalize(this.balance.add(amount));
+        ensureFitsBalance(newBalance);
+        this.balance = newBalance;
     }
 
     /**
@@ -134,6 +139,29 @@ public class Account {
     private void ensureNotClosed() {
         if (status == AccountStatus.CLOSED) {
             throw new BusinessException("Conta encerrada; operacao nao permitida");
+        }
+    }
+
+    /**
+     * Recusa um credito cujo saldo resultante nao caberia na coluna monetaria
+     * ({@code NUMERIC(19,2)}, teto em {@link Money#MAX}).
+     *
+     * <p>Sem esta checagem o excedente so era descoberto no <i>flush</i>, virando
+     * uma {@code DataIntegrityViolationException} que a rede de seguranca generica
+     * traduzia para <b>409 "conflito de concorrencia, requisicao ja em
+     * processamento"</b> — uma causa errada, que manda o cliente repetir uma
+     * requisicao que vai falhar de novo. Quem conhece a causa (o dominio, unico que
+     * sabe o saldo atual) recusa antes, como regra de negocio: 422, do mesmo jeito
+     * que saldo insuficiente. O saque tem um piso (zero); o deposito, um teto.
+     *
+     * <p>A mensagem informa quanto ainda cabe, para o cliente reenviar um valor que
+     * passa em vez de tentar as cegas — mesma escolha da mensagem do limite diario.
+     */
+    private void ensureFitsBalance(BigDecimal newBalance) {
+        if (newBalance.compareTo(Money.MAX) > 0) {
+            throw new BusinessException(
+                    "Saldo maximo da conta excedido; credito maximo aceito: "
+                            + Money.normalize(Money.MAX.subtract(balance)));
         }
     }
 

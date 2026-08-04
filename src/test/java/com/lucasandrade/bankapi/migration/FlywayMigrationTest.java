@@ -116,6 +116,33 @@ class FlywayMigrationTest {
         }
     }
 
+    /**
+     * O expurgo das chaves vencidas filtra por {@code created_at}; sem indice ele
+     * varreria a tabela inteira a cada execucao.
+     */
+    @Test
+    void migrationsAddIdempotencyCreatedAtIndex() throws Exception {
+        try (Connection conn = freshPostgresLikeDb();
+             Statement st = conn.createStatement()) {
+
+            runMigration(st, "db/migration/V1__init_schema.sql");
+            runMigration(st, "db/migration/V2__add_account_version.sql");
+            runMigration(st, "db/migration/V3__add_account_status.sql");
+            runMigration(st, "db/migration/V4__add_idempotency_keys.sql");
+            runMigration(st, "db/migration/V5__add_idempotency_request_fingerprint.sql");
+            runMigration(st, "db/migration/V6__add_idempotency_keys_created_at_index.sql");
+
+            try (ResultSet rs = st.executeQuery(
+                    "SELECT count(*) FROM information_schema.indexes " +
+                            "WHERE table_schema = 'PUBLIC' " +
+                            "AND table_name = 'IDEMPOTENCY_KEYS' " +
+                            "AND index_name = 'IDX_IDEMPOTENCY_KEYS_CREATED_AT'")) {
+                rs.next();
+                assertThat(rs.getInt(1)).isPositive();
+            }
+        }
+    }
+
     private static Connection freshPostgresLikeDb() throws Exception {
         // Cada teste usa um banco isolado para nao herdar tabelas de outro.
         return DriverManager.getConnection(

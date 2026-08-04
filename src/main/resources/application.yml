@@ -31,6 +31,14 @@ security:
 bank:
   limits:
     daily-debit: 10000.00
+  # Chaves de idempotencia sao um cache de respostas, nao um livro-razao: valem
+  # enquanto o cliente ainda pode repetir a requisicao (retry acontece em minutos,
+  # nao em dias). Passada a retencao, um expurgo periodico apaga as vencidas para
+  # a tabela nao crescer para sempre. CUIDADO: retencao menor que a janela de retry
+  # do cliente faz um retry tardio REEXECUTAR a operacao. Formato ISO-8601.
+  idempotency:
+    retention: PT24H
+    purge-interval: PT1H
 
 springdoc:
   swagger-ui:

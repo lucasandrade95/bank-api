@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -56,6 +57,8 @@ class AccountControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.ownerName").value("Lucas Andrade"))
+                // documento devolvido em formato parcial, nunca o CPF inteiro
+                .andExpect(jsonPath("$.document").value("***.444.777-**"))
                 // saldo normalizado para 2 casas decimais (centavos), nunca "0" cru
                 .andExpect(jsonPath("$.balance").value(0.00));
     }
@@ -758,9 +761,64 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.totalElements").exists())
                 .andExpect(jsonPath("$.totalPages").exists())
                 .andExpect(jsonPath("$.last").exists())
-                // a conta recem-criada aparece na listagem; filtro por documento
-                // para ser robusto ao estado do H2 compartilhado entre testes
-                .andExpect(jsonPath("$.content[?(@.document=='" + doc + "')]").isNotEmpty());
+                // a conta recem-criada aparece na listagem; filtro pelo documento
+                // (ja mascarado) para ser robusto ao estado do H2 compartilhado
+                .andExpect(jsonPath("$.content[?(@.document=='***.222.333-**')]").isNotEmpty());
+    }
+
+    /**
+     * A listagem e o pior lugar para vazar CPF: uma unica chamada devolveria o
+     * documento completo de TODOS os titulares. Confere conta a conta, e nao so
+     * a recem-criada.
+     */
+    @Test
+    void listAccounts_neverExposesFullDocument() throws Exception {
+        createAccount("52987413637");
+
+        String response = mockMvc.perform(get("/api/v1/accounts").param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain("52987413637");
+        for (JsonNode account : objectMapper.readTree(response).get("content")) {
+            assertThat(account.get("document").asText()).matches("\\*\\*\\*\\.\\d{3}\\.\\d{3}-\\*\\*");
+        }
+    }
+
+    @Test
+    void findById_returnsMaskedDocument() throws Exception {
+        String id = createAccount("74185296355");
+
+        mockMvc.perform(get("/api/v1/accounts/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.document").value("***.852.963-**"));
+    }
+
+    /**
+     * A transferencia devolve as DUAS contas — o remetente receberia o CPF do
+     * destinatario inteiro. Como a mascara mora no {@code AccountResponse.from},
+     * as duas pernas saem protegidas sem o service precisar lembrar disso.
+     */
+    @Test
+    void transfer_masksDocumentOfBothAccounts() throws Exception {
+        String source = createAccount("96325874137");
+        String destination = createAccount("15975348625");
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/deposit", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "amount": 50.00 }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/accounts/{id}/transfer", source)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "destinationAccountId": "%s", "amount": 10.00 }
+                                """.formatted(destination)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source.document").value("***.258.741-**"))
+                .andExpect(jsonPath("$.destination.document").value("***.753.486-**"));
     }
 
     @Test

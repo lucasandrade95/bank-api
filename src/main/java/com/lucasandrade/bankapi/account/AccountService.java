@@ -193,6 +193,9 @@ public class AccountService {
      * dela): quem envia esta tirando dinheiro da propria conta, quem recebe nao.
      * Fosse o limite so do saque, esvaziar uma conta comprometida seria uma
      * transferencia — o limite existe para cobrir toda saida de dinheiro.
+     *
+     * <p>As duas contas sao carregadas em ORDEM CANONICA (pelo UUID), nao na ordem
+     * origem-depois-destino — ver {@link #loadPair}.
      */
     @Transactional
     public TransferResponse transfer(UUID sourceId, String idempotencyKey, TransferRequest request) {
@@ -202,8 +205,9 @@ public class AccountService {
             if (sourceId.equals(request.destinationAccountId())) {
                 throw new BusinessException("Conta origem e destino devem ser diferentes");
             }
-            Account source = getAccount(sourceId);
-            Account destination = getAccount(request.destinationAccountId());
+            AccountPair pair = loadPair(sourceId, request.destinationAccountId());
+            Account source = pair.source();
+            Account destination = pair.destination();
 
             source.withdraw(request.amount());
             ensureWithinDailyDebitLimit(sourceId, request.amount());
@@ -344,6 +348,45 @@ public class AccountService {
         BigDecimal usedToday = transactionRepository.sumAmountByTypeSince(
                 accountId, TransactionType.debitTypes(), DailyDebitLimit.windowStart());
         dailyDebitLimit.ensureAllows(usedToday, amount);
+    }
+
+    /** As duas contas de uma transferencia, ja carregadas. */
+    private record AccountPair(Account source, Account destination) {
+    }
+
+    /**
+     * Carrega as duas contas de uma transferencia em <b>ordem canonica</b>: sempre a
+     * do menor UUID primeiro, independentemente de qual delas e a origem.
+     *
+     * <p>Isto existe para evitar <b>deadlock</b> no banco. Uma transferencia atualiza
+     * duas linhas de {@code accounts} na mesma transacao, e cada UPDATE toma um lock
+     * na linha ate o commit. Carregando origem-e-depois-destino, duas transferencias
+     * simultaneas em sentidos opostos entre as MESMAS contas travam uma na outra:
+     * A→B pega a linha de A e pede a de B enquanto B→A pega a de B e pede a de A —
+     * nenhuma solta o que ja tem, e o banco mata uma das duas. Com a ordem canonica
+     * as duas pedem os mesmos locks na mesma sequencia, entao a segunda apenas
+     * espera a primeira terminar: o ciclo nao chega a se formar.
+     *
+     * <p>O travamento otimista ({@code @Version}) nao cobre este caso — ele evita
+     * <i>lost update</i> (uma gravacao sobrescrever a outra), nao a espera circular
+     * por locks de linha, que acontece antes, dentro do banco.
+     *
+     * <p>Quem define a ordem dos UPDATEs e a ordem de <b>carga</b>, nao a das chamadas
+     * a {@code save}: as contas ja estao gerenciadas pela transacao, entao o
+     * {@code save} nao emite SQL na hora — o Hibernate emite os UPDATEs no flush,
+     * seguindo a ordem em que as entidades entraram no contexto de persistencia.
+     * Por isso a ordem e imposta aqui, ao carregar.
+     *
+     * <p>Efeito colateral aceito: quando NENHUMA das duas contas existe, o 404 cita a
+     * conta de menor UUID em vez de sempre a origem. Se so uma nao existe, e ela que e
+     * citada, como antes.
+     */
+    private AccountPair loadPair(UUID sourceId, UUID destinationId) {
+        if (sourceId.compareTo(destinationId) < 0) {
+            return new AccountPair(getAccount(sourceId), getAccount(destinationId));
+        }
+        Account destination = getAccount(destinationId);
+        return new AccountPair(getAccount(sourceId), destination);
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */

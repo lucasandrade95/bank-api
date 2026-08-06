@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -73,6 +74,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleOptimisticLock(OptimisticLockingFailureException ex) {
         return build(HttpStatus.CONFLICT,
                 List.of("Conta alterada concorrentemente, tente novamente"));
+    }
+
+    /**
+     * Falha ao ADQUIRIR um lock de linha no banco — na pratica, um deadlock: duas
+     * transacoes ficaram esperando uma pela outra e o banco matou uma delas.
+     *
+     * <p>E irma da falha otimista acima, mas por um motivo oposto: la duas gravacoes
+     * partiram do mesmo estado, aqui duas transacoes disputaram as mesmas linhas em
+     * ordens diferentes. O desfecho para o cliente e o mesmo — a operacao nao
+     * aconteceu (rollback total) e repetir tende a funcionar —, entao o status
+     * tambem e 409.
+     *
+     * <p>Sem este handler o caso caia na rede de seguranca final e virava <b>500</b>:
+     * a API se declarando defeituosa por uma disputa de concorrencia normal, e ainda
+     * sem dizer ao cliente que valia a pena repetir. O caminho conhecido que gerava
+     * isso (transferencias simultaneas em sentidos opostos) foi fechado na origem,
+     * carregando as contas em ordem canonica; este handler fica como rede de
+     * seguranca, para que uma disputa futura em outra tabela nao volte a ser 500.
+     */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handlePessimisticLock(PessimisticLockingFailureException ex) {
+        return build(HttpStatus.CONFLICT,
+                List.of("Operacao concorrente na mesma conta, tente novamente"));
     }
 
     /**

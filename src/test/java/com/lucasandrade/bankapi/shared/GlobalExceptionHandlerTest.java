@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -76,6 +77,25 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/api/v1/accounts/{id}", UUID.randomUUID()))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().string(not(containsString("fk_accounts_owner"))));
+    }
+
+    /**
+     * Deadlock no banco: duas transacoes esperaram uma pela outra e o banco matou
+     * uma delas. Isso e uma disputa de concorrencia normal, nao um defeito nosso —
+     * volta <b>409</b> (a operacao nao aconteceu, repetir tende a funcionar), e nao
+     * o 500 que a rede de seguranca final daria, que se declararia defeituosa e
+     * ainda esconderia do cliente que valia a pena repetir.
+     */
+    @Test
+    void lockAcquisitionFailure_returns409_notServerError() throws Exception {
+        doThrow(new CannotAcquireLockException("deadlock detected"))
+                .when(repository).findById(any(UUID.class));
+
+        mockMvc.perform(get("/api/v1/accounts/{id}", UUID.randomUUID()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.messages[0]")
+                        .value("Operacao concorrente na mesma conta, tente novamente"));
     }
 
     /**

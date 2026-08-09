@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
@@ -20,8 +21,38 @@ import java.util.UUID;
  * ({@code balanceAfter}), permitindo reconstruir o historico da conta.
  */
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = @Index(
+        name = Transaction.STATEMENT_INDEX,
+        columnList = "account_id, created_at desc, id desc"))
 public class Transaction {
+
+    /**
+     * Indice que serve TODAS as consultas do extrato — e nao apenas o filtro por
+     * conta. Declarado aqui (e nao so na migracao Flyway) para que o H2 de
+     * dev/teste, cujo schema o Hibernate cria, tenha o mesmo indice do Postgres:
+     * um indice que so existe em producao nao e exercitado por ninguem.
+     *
+     * <p>A ordem das colunas e a coisa toda. Todas as consultas de
+     * {@code TransactionRepository} sao "uma conta + uma janela de tempo":
+     * o extrato paginado ({@code where account_id = ? ... order by created_at desc,
+     * id desc}), o resumo do periodo e a soma do limite diario de debito. Um indice
+     * so por {@code account_id} — o que a V1 criou — resolve apenas a igualdade:
+     * o banco ainda le TODOS os lancamentos da conta e os ordena em memoria para
+     * devolver uma pagina de 20. Numa conta com muito historico isso faz a pagina 1
+     * custar o mesmo que a pagina 500, e o custo cresce com o tamanho da conta em
+     * vez de com o tamanho da pagina.
+     *
+     * <p>Com {@code (account_id, created_at, id)} o banco posiciona no inicio da
+     * conta e caminha pelo indice JA na ordem pedida, parando no {@code limit} — e
+     * o mesmo caminho serve o recorte por periodo ({@code created_at >= ? and < ?}),
+     * que passa a ser um trecho contiguo do indice em vez de um filtro linha a linha.
+     * O {@code id} entra como terceira coluna pelo mesmo motivo que ele entra no
+     * {@code order by}: e o criterio de desempate que torna a ordenacao total.
+     *
+     * <p>O {@code desc} e explicito por clareza; um btree tambem seria varrido de
+     * tras para frente para a mesma ordenacao, ja que {@code account_id} e igualdade.
+     */
+    static final String STATEMENT_INDEX = "idx_transactions_account_created_at";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

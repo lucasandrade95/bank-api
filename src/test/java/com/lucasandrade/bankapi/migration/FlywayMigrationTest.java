@@ -143,6 +143,44 @@ class FlywayMigrationTest {
         }
     }
 
+    /**
+     * O extrato pede "uma conta, do mais recente para o mais antigo, uma pagina":
+     * o indice so por {@code account_id} da V1 nao serve a ordenacao nem ao recorte
+     * por periodo. A V7 troca os dois — o composto entra e o redundante sai.
+     */
+    @Test
+    void migrationsReplaceTransactionsIndexWithCompositeOne() throws Exception {
+        try (Connection conn = freshPostgresLikeDb();
+             Statement st = conn.createStatement()) {
+
+            runMigration(st, "db/migration/V1__init_schema.sql");
+            runMigration(st, "db/migration/V2__add_account_version.sql");
+            runMigration(st, "db/migration/V3__add_account_status.sql");
+            runMigration(st, "db/migration/V4__add_idempotency_keys.sql");
+            runMigration(st, "db/migration/V5__add_idempotency_request_fingerprint.sql");
+            runMigration(st, "db/migration/V6__add_idempotency_keys_created_at_index.sql");
+            runMigration(st, "db/migration/V7__replace_transactions_account_index.sql");
+
+            assertThat(indexColumns(st, "IDX_TRANSACTIONS_ACCOUNT_CREATED_AT"))
+                    .containsExactly("ACCOUNT_ID", "CREATED_AT", "ID");
+            assertThat(indexColumns(st, "IDX_TRANSACTIONS_ACCOUNT_ID")).isEmpty();
+        }
+    }
+
+    /** Colunas de um indice de {@code transactions}, na ordem em que ele as usa. */
+    private static java.util.List<String> indexColumns(Statement st, String indexName) throws Exception {
+        java.util.List<String> columns = new java.util.ArrayList<>();
+        try (ResultSet rs = st.executeQuery(
+                "SELECT column_name FROM information_schema.index_columns " +
+                        "WHERE table_schema = 'PUBLIC' AND table_name = 'TRANSACTIONS' " +
+                        "AND index_name = '" + indexName + "' ORDER BY ordinal_position")) {
+            while (rs.next()) {
+                columns.add(rs.getString(1));
+            }
+        }
+        return columns;
+    }
+
     private static Connection freshPostgresLikeDb() throws Exception {
         // Cada teste usa um banco isolado para nao herdar tabelas de outro.
         return DriverManager.getConnection(

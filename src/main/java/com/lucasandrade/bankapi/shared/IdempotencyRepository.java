@@ -7,7 +7,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 
-public interface IdempotencyRepository extends JpaRepository<IdempotencyRecord, String> {
+/**
+ * A chave primaria e composta — (cliente, {@code Idempotency-Key}) —, entao o id
+ * do repositorio e {@link IdempotencyRecord.Key} e nao a chave sozinha: buscar
+ * so pela string enviada pelo cliente misturaria o namespace de clientes
+ * diferentes, que e exatamente o que o escopo existe para evitar.
+ */
+public interface IdempotencyRepository extends JpaRepository<IdempotencyRecord, IdempotencyRecord.Key> {
 
     /**
      * Apaga as chaves gravadas antes de {@code cutoff} (as que ja sairam da janela

@@ -3,9 +3,12 @@ package com.lucasandrade.bankapi.shared;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 
+import java.io.Serializable;
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * Registro de uma operacao ja processada, identificada pela {@code Idempotency-Key}
@@ -19,12 +22,17 @@ import java.time.Instant;
  * operacoes concluidas com sucesso ficam memoizadas, e uma tentativa que
  * realmente falhou pode ser refeita com a mesma chave.
  *
+ * <p>A identidade do registro e o par <b>(cliente, chave)</b>, nao a chave sozinha:
+ * uma {@code Idempotency-Key} e o nome que <i>aquele</i> cliente deu a <i>aquela</i>
+ * requisicao dele — ver {@link ClientScope} e {@link IdempotencyService}.
+ *
  * <p>Junto da resposta guarda a "impressao digital" da requisicao que gerou a
  * chave, para que a chave so responda a repeticoes daquela mesma requisicao —
  * ver {@link IdempotencyService}.
  */
 @Entity
 @Table(name = "idempotency_keys")
+@IdClass(IdempotencyRecord.Key.class)
 public class IdempotencyRecord {
 
     /**
@@ -36,17 +44,27 @@ public class IdempotencyRecord {
      */
     public static final int KEY_MAX_LENGTH = 255;
 
-    /** A propria {@code Idempotency-Key} enviada pelo cliente (unica por operacao). */
+    /**
+     * Escopo do cliente dono da chave: o username autenticado, guardado como hash
+     * SHA-256 (largura fixa, ver {@link ClientScope}). Faz parte da chave primaria:
+     * a mesma string de {@code Idempotency-Key} vinda de <b>clientes diferentes</b>
+     * sao registros diferentes, porque sao requisicoes diferentes.
+     */
     @Id
-    @Column(length = KEY_MAX_LENGTH)
-    private String id;
+    @Column(name = "client_id", length = Hashing.HEX_LENGTH)
+    private String clientId;
+
+    /** A propria {@code Idempotency-Key} enviada pelo cliente (unica por operacao dele). */
+    @Id
+    @Column(name = "id", length = KEY_MAX_LENGTH)
+    private String key;
 
     /**
      * Hash SHA-256 (hex) da requisicao que gerou esta chave: identifica operacao,
      * conta e valor. Uma repeticao so recebe a resposta guardada se a impressao
      * digital bater — reuso da chave com outra requisicao vira 409.
      */
-    @Column(nullable = false, length = 64)
+    @Column(nullable = false, length = Hashing.HEX_LENGTH)
     private String requestFingerprint;
 
     /** Corpo da resposta original serializado em JSON, devolvido nas repeticoes. */
@@ -60,15 +78,20 @@ public class IdempotencyRecord {
         // exigido pelo JPA
     }
 
-    public IdempotencyRecord(String id, String requestFingerprint, String responseBody) {
-        this.id = id;
+    public IdempotencyRecord(String clientId, String key, String requestFingerprint, String responseBody) {
+        this.clientId = clientId;
+        this.key = key;
         this.requestFingerprint = requestFingerprint;
         this.responseBody = responseBody;
         this.createdAt = Instant.now();
     }
 
-    public String getId() {
-        return id;
+    public String getClientId() {
+        return clientId;
+    }
+
+    public String getKey() {
+        return key;
     }
 
     public String getRequestFingerprint() {
@@ -81,5 +104,43 @@ public class IdempotencyRecord {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * Chave primaria composta: (cliente, {@code Idempotency-Key}).
+     *
+     * <p>Classe (e nao {@code record}) porque a especificacao JPA exige da
+     * {@code @IdClass} um construtor publico sem argumentos, o que um record nao
+     * tem.
+     */
+    public static class Key implements Serializable {
+
+        private String clientId;
+        private String key;
+
+        public Key() {
+            // exigido pelo JPA
+        }
+
+        public Key(String clientId, String key) {
+            this.clientId = clientId;
+            this.key = key;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof Key other)) {
+                return false;
+            }
+            return Objects.equals(clientId, other.clientId) && Objects.equals(key, other.key);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(clientId, key);
+        }
     }
 }

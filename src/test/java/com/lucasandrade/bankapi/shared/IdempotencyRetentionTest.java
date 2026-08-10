@@ -30,9 +30,6 @@ class IdempotencyRetentionTest {
     private IdempotencyService idempotency;
 
     @Autowired
-    private IdempotencyRepository repository;
-
-    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     /** Grava uma chave e envelhece o registro no banco, simulando a passagem do tempo. */
@@ -44,6 +41,17 @@ class IdempotencyRetentionTest {
         return key;
     }
 
+    /**
+     * Conta as linhas gravadas sob a chave, em qualquer escopo de cliente. O que
+     * este teste verifica e a retencao (a linha saiu ou ficou), nao a quem ela
+     * pertence — por isso a consulta e direta, sem montar a chave composta.
+     */
+    private int rowsFor(String key) {
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from idempotency_keys where id = ?", Integer.class, key);
+        return count == null ? 0 : count;
+    }
+
     @Test
     void purgeRemovesKeysOlderThanRetention_andKeepsRecentOnes() {
         String expired = keyCreatedAgo(Duration.ofHours(25));
@@ -51,8 +59,8 @@ class IdempotencyRetentionTest {
 
         assertThat(idempotency.purgeExpired()).isPositive();
 
-        assertThat(repository.findById(expired)).isEmpty();
-        assertThat(repository.findById(recent)).isPresent();
+        assertThat(rowsFor(expired)).isZero();
+        assertThat(rowsFor(recent)).isEqualTo(1);
     }
 
     /**

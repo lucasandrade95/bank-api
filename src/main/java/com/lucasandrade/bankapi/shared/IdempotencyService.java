@@ -9,12 +9,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -25,6 +21,17 @@ import java.util.function.Supplier;
  * <p>Sem chave, a operacao roda normalmente (comportamento opcional, retro-compativel).
  * Com chave: na primeira vez executa e guarda a resposta; numa repeticao com a
  * mesma chave devolve a resposta original, sem executar o efeito colateral de novo.
+ *
+ * <p>A chave e <b>escopada ao cliente</b> que a enviou ({@link ClientScope}), nunca
+ * global. Uma {@code Idempotency-Key} e o nome que <i>aquele</i> cliente deu a uma
+ * requisicao <i>dele</i> — dois clientes que escolhem a mesma string ("1",
+ * "pagamento-do-mes") nao estao repetindo a requisicao um do outro. Num namespace
+ * unico, a string escolhida por um cliente decidiria o destino da requisicao de
+ * outro: no melhor caso a impressao digital nao bate e o segundo recebe 409 numa
+ * requisicao que ele nunca tinha enviado; no pior, ela bate (mesma operacao, mesma
+ * conta, mesmo valor) e ele recebe <b>200 com a resposta guardada do outro</b> —
+ * a operacao dele nunca acontece e nada indica o erro. A impressao digital sozinha
+ * nao resolve isso: ela responde "e a mesma requisicao?", nao "e o mesmo cliente?".
  *
  * <p>A chave e <b>vinculada a requisicao que a gerou</b> por uma impressao digital
  * (hash do conjunto operacao + conta + valor). Uma chave so devolve a resposta
@@ -47,13 +54,16 @@ public class IdempotencyService {
     private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
 
     private final IdempotencyRepository repository;
+    private final ClientScope clientScope;
     private final ObjectMapper objectMapper;
     private final Duration retention;
 
     public IdempotencyService(IdempotencyRepository repository,
+                              ClientScope clientScope,
                               ObjectMapper objectMapper,
                               @Value("${bank.idempotency.retention}") Duration retention) {
         this.repository = repository;
+        this.clientScope = clientScope;
         this.objectMapper = objectMapper;
         this.retention = retention;
     }
@@ -61,19 +71,25 @@ public class IdempotencyService {
     /**
      * Executa {@code operation} com garantia de idempotencia sob {@code key}.
      *
+     * <p>A chave e procurada e gravada dentro do escopo do cliente autenticado, entao
+     * ela so pode devolver a resposta de uma requisicao <b>dele proprio</b>.
+     *
      * @param key         a Idempotency-Key do cliente; {@code null}/em branco desliga a idempotencia
      * @param requestData descricao canonica da requisicao (operacao + conta + valor); e o que
      *                    diferencia um retry legitimo de um reuso da chave em outra requisicao
      * @param type        o tipo da resposta, usado para desserializar uma resposta guardada
      * @param operation   a operacao a executar na primeira vez que a chave e vista
      * @throws IdempotencyConflictException se a chave ja atendeu uma requisicao diferente
+     *                                      do mesmo cliente
      */
     public <T> T execute(String key, String requestData, Class<T> type, Supplier<T> operation) {
         if (key == null || key.isBlank()) {
             return operation.get();
         }
+        String clientId = clientScope.current();
         String fingerprint = fingerprint(requestData);
-        Optional<IdempotencyRecord> existing = repository.findById(key);
+        Optional<IdempotencyRecord> existing =
+                repository.findById(new IdempotencyRecord.Key(clientId, key));
         if (existing.isPresent()) {
             IdempotencyRecord record = existing.get();
             if (!fingerprint.equals(record.getRequestFingerprint())) {
@@ -83,7 +99,7 @@ public class IdempotencyService {
             return deserialize(record.getResponseBody(), type);
         }
         T result = operation.get();
-        repository.save(new IdempotencyRecord(key, fingerprint, serialize(result)));
+        repository.save(new IdempotencyRecord(clientId, key, fingerprint, serialize(result)));
         return result;
     }
 
@@ -133,14 +149,7 @@ public class IdempotencyService {
      * precisa responder "e a mesma requisicao?", nunca reconstruir o original.
      */
     private static String fingerprint(String requestData) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(requestData.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 e obrigatorio em toda JVM; se faltar, o ambiente esta quebrado.
-            throw new IllegalStateException("SHA-256 indisponivel nesta JVM", e);
-        }
+        return Hashing.sha256Hex(requestData);
     }
 
     private String serialize(Object value) {

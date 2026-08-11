@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.account;
 
+import com.lucasandrade.bankapi.account.OperationMetrics.Operation;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
@@ -14,8 +15,6 @@ import com.lucasandrade.bankapi.shared.IdempotencyService;
 import com.lucasandrade.bankapi.shared.Money;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import com.lucasandrade.bankapi.shared.PageResponse;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
@@ -40,31 +39,20 @@ public class AccountService {
     private final IdempotencyService idempotency;
     private final DailyDebitLimit dailyDebitLimit;
 
-    // Metricas de negocio: contam operacoes concluidas, expostas em /actuator/metrics.
-    private final Counter depositCounter;
-    private final Counter withdrawalCounter;
-    private final Counter transferCounter;
+    // Metricas de negocio: contam operacoes concluidas (ou seja, committadas),
+    // expostas em /actuator/metrics. Ver OperationMetrics.
+    private final OperationMetrics metrics;
 
     public AccountService(AccountRepository repository,
                           TransactionRepository transactionRepository,
                           IdempotencyService idempotency,
-                          MeterRegistry meterRegistry,
+                          OperationMetrics metrics,
                           @Value("${bank.limits.daily-debit}") BigDecimal dailyDebitLimit) {
         this.repository = repository;
         this.transactionRepository = transactionRepository;
         this.idempotency = idempotency;
+        this.metrics = metrics;
         this.dailyDebitLimit = new DailyDebitLimit(dailyDebitLimit);
-        this.depositCounter = operationCounter(meterRegistry, "deposit");
-        this.withdrawalCounter = operationCounter(meterRegistry, "withdrawal");
-        this.transferCounter = operationCounter(meterRegistry, "transfer");
-    }
-
-    /** Counter de operacoes concluidas, diferenciado pela tag {@code type}. */
-    private static Counter operationCounter(MeterRegistry registry, String type) {
-        return Counter.builder("bank.account.operations")
-                .description("Total de operacoes bancarias concluidas")
-                .tag("type", type)
-                .register(registry);
     }
 
     /**
@@ -155,7 +143,7 @@ public class AccountService {
             account.deposit(request.amount());
             repository.save(account);
             record(account, TransactionType.DEPOSIT, request.amount(), null);
-            depositCounter.increment();
+            metrics.countOnCommit(Operation.DEPOSIT);
             return AccountResponse.from(account);
         });
     }
@@ -179,7 +167,7 @@ public class AccountService {
             ensureWithinDailyDebitLimit(id, request.amount());
             repository.save(account);
             record(account, TransactionType.WITHDRAWAL, request.amount(), null);
-            withdrawalCounter.increment();
+            metrics.countOnCommit(Operation.WITHDRAWAL);
             return AccountResponse.from(account);
         });
     }
@@ -217,7 +205,7 @@ public class AccountService {
             repository.save(destination);
             record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
             record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
-            transferCounter.increment();
+            metrics.countOnCommit(Operation.TRANSFER);
             return TransferResponse.of(source, destination, request.amount());
         });
     }

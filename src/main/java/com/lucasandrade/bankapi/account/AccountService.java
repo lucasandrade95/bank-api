@@ -1,6 +1,7 @@
 package com.lucasandrade.bankapi.account;
 
 import com.lucasandrade.bankapi.account.OperationMetrics.Operation;
+import com.lucasandrade.bankapi.account.dto.AccountLimitsResponse;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
@@ -299,6 +300,27 @@ public class AccountService {
     }
 
     /**
+     * Situacao dos limites da conta: o teto diario de debito, o quanto ja saiu
+     * hoje e o quanto ainda ha disponivel. Existe para o cliente saber quanto
+     * pode movimentar ANTES de tentar, em vez de descobrir estourando (422).
+     *
+     * <p>Usa a MESMA soma no banco ({@link #usedToday}) e a MESMA aritmetica
+     * ({@link DailyDebitLimit#remaining}) da checagem que barra as operacoes —
+     * consulta e enforcement nao tem como divergir. E uma foto do instante, nao
+     * uma reserva: entre consultar e operar, outra operacao pode consumir o
+     * limite — a operacao seguinte refaz a checagem de verdade.
+     */
+    @Transactional(readOnly = true)
+    public AccountLimitsResponse limits(UUID id) {
+        getAccount(id); // garante 404 para conta inexistente
+        BigDecimal usedToday = usedToday(id);
+        return new AccountLimitsResponse(new AccountLimitsResponse.DailyDebit(
+                dailyDebitLimit.limit(),
+                Money.normalize(usedToday),
+                dailyDebitLimit.remaining(usedToday)));
+    }
+
+    /**
      * Descricao canonica de uma operacao com dinheiro, usada pela idempotencia para
      * saber se uma repeticao da mesma {@code Idempotency-Key} e o MESMO pedido.
      *
@@ -333,9 +355,13 @@ public class AccountService {
      * repetida, refaz esta checagem com o total ja atualizado.
      */
     private void ensureWithinDailyDebitLimit(UUID accountId, BigDecimal amount) {
-        BigDecimal usedToday = transactionRepository.sumAmountByTypeSince(
+        dailyDebitLimit.ensureAllows(usedToday(accountId), amount);
+    }
+
+    /** Total ja debitado da conta na janela de hoje (saques e transferencias enviadas). */
+    private BigDecimal usedToday(UUID accountId) {
+        return transactionRepository.sumAmountByTypeSince(
                 accountId, TransactionType.debitTypes(), DailyDebitLimit.windowStart());
-        dailyDebitLimit.ensureAllows(usedToday, amount);
     }
 
     /** As duas contas de uma transferencia, ja carregadas. */

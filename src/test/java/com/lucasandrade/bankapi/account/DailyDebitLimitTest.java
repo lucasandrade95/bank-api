@@ -56,6 +56,25 @@ class DailyDebitLimitTest {
     }
 
     @Test
+    void remaining_reportsWhatIsLeftOfToday() {
+        assertThat(limit.remaining(new BigDecimal("400.00"))).isEqualTo(new BigDecimal("600.00"));
+        assertThat(limit.remaining(BigDecimal.ZERO)).isEqualTo(new BigDecimal("1000.00"));
+    }
+
+    @Test
+    void remaining_neverGoesNegative() {
+        // total do dia acima do teto (ex.: o limite configurado baixou depois de o
+        // dinheiro ja ter saido): o disponivel e zero, nunca um valor negativo
+        assertThat(limit.remaining(new BigDecimal("1500.00"))).isEqualTo(new BigDecimal("0.00"));
+    }
+
+    @Test
+    void remaining_comesInCanonicalMoneyScale() {
+        // 100 (escala 0) subtraido de 1000.00 volta na escala monetaria de 2 casas
+        assertThat(limit.remaining(new BigDecimal("100"))).isEqualTo(new BigDecimal("900.00"));
+    }
+
+    @Test
     void rejectsInvalidConfiguredLimit() {
         // limite mal configurado e erro de start da aplicacao, nao de requisicao
         assertThatThrownBy(() -> new DailyDebitLimit(new BigDecimal("-1")))

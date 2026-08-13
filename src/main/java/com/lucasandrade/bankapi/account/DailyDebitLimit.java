@@ -46,6 +46,18 @@ public record DailyDebitLimit(BigDecimal limit) {
     }
 
     /**
+     * O quanto ainda pode sair da conta hoje, dado o total ja debitado na janela.
+     * Nunca negativo: um total acima do limite (ex.: o teto configurado baixou
+     * depois de o dinheiro ja ter saido) devolve zero, nao um valor negativo.
+     *
+     * <p>E a MESMA aritmetica que decide se uma operacao passa ({@link #ensureAllows}):
+     * o que a consulta de limites informa e o que a proxima operacao vai obedecer.
+     */
+    public BigDecimal remaining(BigDecimal usedInWindow) {
+        return Money.normalize(limit.subtract(usedInWindow).max(BigDecimal.ZERO));
+    }
+
+    /**
      * Verifica se um novo debito cabe no que sobrou do limite de hoje, dado o
      * total ja debitado na janela. Estourar o limite e uma regra de negocio, nao
      * um erro de formato: sai como {@link BusinessException} (422), do mesmo jeito
@@ -55,10 +67,10 @@ public record DailyDebitLimit(BigDecimal limit) {
      * poder reenviar um valor que passa em vez de ficar tentando as cegas.
      */
     public void ensureAllows(BigDecimal usedInWindow, BigDecimal amount) {
-        BigDecimal remaining = limit.subtract(usedInWindow).max(BigDecimal.ZERO);
+        BigDecimal remaining = remaining(usedInWindow);
         if (amount.compareTo(remaining) > 0) {
             throw new BusinessException(
-                    "Limite diario de debito excedido; disponivel hoje: " + Money.normalize(remaining));
+                    "Limite diario de debito excedido; disponivel hoje: " + remaining);
         }
     }
 }

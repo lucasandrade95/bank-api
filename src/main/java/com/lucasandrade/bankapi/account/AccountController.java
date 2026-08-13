@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.account;
 
+import com.lucasandrade.bankapi.account.dto.AccountLimitsResponse;
 import com.lucasandrade.bankapi.account.dto.AccountResponse;
 import com.lucasandrade.bankapi.account.dto.CreateAccountRequest;
 import com.lucasandrade.bankapi.account.dto.MoneyOperationRequest;
@@ -102,6 +103,11 @@ public class AccountController {
     @PostMapping("/{id}/close")
     public ResponseEntity<AccountResponse> close(@PathVariable UUID id) {
         return ResponseEntity.ok(service.close(id));
+    }
+
+    @GetMapping("/{id}/limits")
+    public ResponseEntity<AccountLimitsResponse> limits(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.limits(id));
     }
 
     @GetMapping("/{id}/statement")

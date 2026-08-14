@@ -10,6 +10,7 @@ import com.lucasandrade.bankapi.account.dto.TransferRequest;
 import com.lucasandrade.bankapi.account.dto.TransferResponse;
 import com.lucasandrade.bankapi.shared.IdempotencyRecord;
 import com.lucasandrade.bankapi.shared.PageResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -140,6 +141,9 @@ public class AccountController {
     }
 
     @GetMapping("/health")
+    // Rota publica (probe): o @SecurityRequirements vazio remove desta operacao o
+    // requisito global de bearer declarado no OpenApiConfig.
+    @SecurityRequirements
     public ResponseEntity<String> health() {
         return ResponseEntity.status(HttpStatus.OK).body("UP");
     }

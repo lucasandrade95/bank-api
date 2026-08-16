@@ -138,12 +138,13 @@ public class AccountService {
 
     @Transactional
     public AccountResponse deposit(UUID id, String idempotencyKey, MoneyOperationRequest request) {
-        String requestData = requestData("deposit", id, request.amount());
+        String description = Transaction.normalizeDescription(request.description());
+        String requestData = requestData("deposit", id, request.amount(), description);
         return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
             Account account = getAccount(id);
             account.deposit(request.amount());
             repository.save(account);
-            record(account, TransactionType.DEPOSIT, request.amount(), null);
+            record(account, TransactionType.DEPOSIT, request.amount(), null, description);
             metrics.countOnCommit(Operation.DEPOSIT);
             return AccountResponse.from(account);
         });
@@ -161,13 +162,14 @@ public class AccountService {
      */
     @Transactional
     public AccountResponse withdraw(UUID id, String idempotencyKey, MoneyOperationRequest request) {
-        String requestData = requestData("withdraw", id, request.amount());
+        String description = Transaction.normalizeDescription(request.description());
+        String requestData = requestData("withdraw", id, request.amount(), description);
         return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
             Account account = getAccount(id);
             account.withdraw(request.amount());
             ensureWithinDailyDebitLimit(id, request.amount());
             repository.save(account);
-            record(account, TransactionType.WITHDRAWAL, request.amount(), null);
+            record(account, TransactionType.WITHDRAWAL, request.amount(), null, description);
             metrics.countOnCommit(Operation.WITHDRAWAL);
             return AccountResponse.from(account);
         });
@@ -188,8 +190,9 @@ public class AccountService {
      */
     @Transactional
     public TransferResponse transfer(UUID sourceId, String idempotencyKey, TransferRequest request) {
+        String description = Transaction.normalizeDescription(request.description());
         String requestData = requestData(
-                "transfer", sourceId, request.amount(), request.destinationAccountId());
+                "transfer", sourceId, request.amount(), request.destinationAccountId(), description);
         return idempotency.execute(idempotencyKey, requestData, TransferResponse.class, () -> {
             if (sourceId.equals(request.destinationAccountId())) {
                 throw new BusinessException("Conta origem e destino devem ser diferentes");
@@ -204,8 +207,8 @@ public class AccountService {
 
             repository.save(source);
             repository.save(destination);
-            record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId());
-            record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId());
+            record(source, TransactionType.TRANSFER_OUT, request.amount(), destination.getId(), description);
+            record(destination, TransactionType.TRANSFER_IN, request.amount(), source.getId(), description);
             metrics.countOnCommit(Operation.TRANSFER);
             return TransferResponse.of(source, destination, request.amount());
         });
@@ -327,6 +330,10 @@ public class AccountService {
      * <p>O valor passa por {@link Money#normalize} para que a comparacao seja de
      * dinheiro, e nao de texto: um retry que manda {@code 10.5} onde antes mandou
      * {@code 10.50} e a mesma operacao e deve receber a resposta guardada, nao um 409.
+     * Pelo mesmo motivo a descricao entra ja normalizada
+     * ({@link Transaction#normalizeDescription}). Ela FAZ parte da identidade do
+     * pedido: reusar a chave com outra descricao e outro pedido (409), porque a
+     * resposta guardada nao corresponderia ao lancamento que o cliente pediu.
      */
     private static String requestData(String operation, UUID accountId, BigDecimal amount,
                                       Object... extras) {
@@ -404,9 +411,10 @@ public class AccountService {
     }
 
     /** Registra um lancamento no extrato, guardando o saldo resultante da conta. */
-    private void record(Account account, TransactionType type, BigDecimal amount, UUID counterpartyId) {
-        transactionRepository.save(
-                new Transaction(account.getId(), type, amount, account.getBalance(), counterpartyId));
+    private void record(Account account, TransactionType type, BigDecimal amount,
+                        UUID counterpartyId, String description) {
+        transactionRepository.save(new Transaction(
+                account.getId(), type, amount, account.getBalance(), counterpartyId, description));
     }
 
     private Account getAccount(UUID id) {

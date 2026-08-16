@@ -74,7 +74,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=postgres
 
 > O **CPF do titular volta mascarado** em toda resposta (`***.456.789-**`) — ele entra inteiro na criação da conta e é guardado inteiro, mas não sai inteiro. O identificador da conta continua sendo o `id` (UUID), então nada no contrato depende do documento completo.
 
-> As operações de dinheiro (`deposit`, `withdraw`, `transfer`) aceitam um cabeçalho opcional `Idempotency-Key`: reenviar a mesma requisição com a mesma chave devolve a resposta original sem repetir a operação (útil para *retry* seguro após timeout). Use **uma chave por operação**: a chave fica ligada à requisição que a gerou, então reusá-la em outra operação, conta ou valor volta **409**. A chave é **sua**: ela vive no escopo do cliente autenticado, então dois clientes podem escolher a mesma string sem interferir um no outro. A chave vale por **24h** (`bank.idempotency.retention`) — depois disso ela é expurgada e um *retry* tardio executa a operação de novo.
+> As operações de dinheiro aceitam uma **`description` opcional** (até 140 caracteres) — "aluguel", "pix do almoço" — que fica gravada no lançamento e volta no extrato e no comprovante. Numa transferência as **duas pernas** recebem a mesma descrição. Espaços nas pontas são removidos e um texto em branco vale como ausente (`null`).
+
+> As operações de dinheiro (`deposit`, `withdraw`, `transfer`) aceitam um cabeçalho opcional `Idempotency-Key`: reenviar a mesma requisição com a mesma chave devolve a resposta original sem repetir a operação (útil para *retry* seguro após timeout). Use **uma chave por operação**: a chave fica ligada à requisição que a gerou, então reusá-la em outra operação, conta, valor ou descrição volta **409**. A chave é **sua**: ela vive no escopo do cliente autenticado, então dois clientes podem escolher a mesma string sem interferir um no outro. A chave vale por **24h** (`bank.idempotency.retention`) — depois disso ela é expurgada e um *retry* tardio executa a operação de novo.
 
 Exemplo (registrar, pegar o token e criar conta autenticado):
 

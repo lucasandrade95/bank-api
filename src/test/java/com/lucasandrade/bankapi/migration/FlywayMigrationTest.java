@@ -1,5 +1,6 @@
 package com.lucasandrade.bankapi.migration;
 
+import com.lucasandrade.bankapi.account.Transaction;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.util.StreamUtils;
@@ -208,6 +209,37 @@ class FlywayMigrationTest {
                             "AND index_name = 'IDX_IDEMPOTENCY_KEYS_CREATED_AT'")) {
                 rs.next();
                 assertThat(rs.getInt(1)).isPositive();
+            }
+        }
+    }
+
+    /**
+     * A V9 adiciona a descricao livre do lancamento. Nula (lancamentos antigos nao
+     * ganham descricao retroativa) e com o mesmo tamanho do @Size do payload:
+     * um texto que passa na validacao nunca pode estourar a coluna.
+     */
+    @Test
+    void migrationsAddTransactionDescriptionColumn() throws Exception {
+        try (Connection conn = freshPostgresLikeDb();
+             Statement st = conn.createStatement()) {
+
+            runMigration(st, "db/migration/V1__init_schema.sql");
+            runMigration(st, "db/migration/V2__add_account_version.sql");
+            runMigration(st, "db/migration/V3__add_account_status.sql");
+            runMigration(st, "db/migration/V4__add_idempotency_keys.sql");
+            runMigration(st, "db/migration/V5__add_idempotency_request_fingerprint.sql");
+            runMigration(st, "db/migration/V6__add_idempotency_keys_created_at_index.sql");
+            runMigration(st, "db/migration/V7__replace_transactions_account_index.sql");
+            runMigration(st, "db/migration/V8__scope_idempotency_keys_by_client.sql");
+            runMigration(st, "db/migration/V9__add_transaction_description.sql");
+
+            try (ResultSet rs = st.executeQuery(
+                    "SELECT is_nullable, character_maximum_length FROM information_schema.columns " +
+                            "WHERE table_schema = 'PUBLIC' " +
+                            "AND table_name = 'TRANSACTIONS' AND column_name = 'DESCRIPTION'")) {
+                assertThat(rs.next()).as("coluna description existe").isTrue();
+                assertThat(rs.getString(1)).isEqualTo("YES");
+                assertThat(rs.getInt(2)).isEqualTo(Transaction.DESCRIPTION_MAX_LENGTH);
             }
         }
     }

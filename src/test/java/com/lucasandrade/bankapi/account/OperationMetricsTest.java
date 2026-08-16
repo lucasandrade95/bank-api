@@ -112,7 +112,7 @@ class OperationMetricsTest {
         double before = count(Operation.DEPOSIT);
 
         transaction().executeWithoutResult(status -> {
-            accountService.deposit(id, null, new MoneyOperationRequest(new BigDecimal("100.00")));
+            accountService.deposit(id, null, new MoneyOperationRequest(new BigDecimal("100.00"), null));
             status.setRollbackOnly();
         });
 
@@ -127,7 +127,7 @@ class OperationMetricsTest {
         UUID id = accountRepository.save(new Account("Lucas Andrade", uniqueDocument())).getId();
         double before = count(Operation.DEPOSIT);
 
-        accountService.deposit(id, null, new MoneyOperationRequest(new BigDecimal("100.00")));
+        accountService.deposit(id, null, new MoneyOperationRequest(new BigDecimal("100.00"), null));
 
         assertThat(count(Operation.DEPOSIT)).isEqualTo(before + 1);
     }
@@ -145,7 +145,7 @@ class OperationMetricsTest {
         double before = count(Operation.TRANSFER);
 
         assertThatThrownBy(() -> accountService.transfer(sourceId, null,
-                new TransferRequest(destinationId, new BigDecimal("50.00"))))
+                new TransferRequest(destinationId, new BigDecimal("50.00"), null)))
                 .isInstanceOf(BusinessException.class);
 
         assertThat(count(Operation.TRANSFER)).isEqualTo(before);

@@ -54,6 +54,14 @@ public class Transaction {
      */
     static final String STATEMENT_INDEX = "idx_transactions_account_created_at";
 
+    /**
+     * Tamanho maximo da descricao livre de um lancamento. Espelhado na coluna
+     * ({@code length}) e na validacao de entrada dos payloads ({@code @Size}), para
+     * que o limite anunciado ao cliente seja o mesmo que a coluna aceita — um texto
+     * que passa na validacao nunca estoura no banco.
+     */
+    public static final int DESCRIPTION_MAX_LENGTH = 140;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -76,6 +84,15 @@ public class Transaction {
     @Column
     private UUID counterpartyAccountId;
 
+    /**
+     * Descricao livre informada pelo cliente na operacao ("aluguel", "pix do
+     * almoco"), opcional. Guardada ja normalizada ({@link #normalizeDescription}):
+     * sem espacos nas pontas e nunca em branco — ausente e {@code null}, nao
+     * {@code ""}. Numa transferencia as duas pernas recebem a mesma descricao.
+     */
+    @Column(length = DESCRIPTION_MAX_LENGTH)
+    private String description;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -84,13 +101,28 @@ public class Transaction {
     }
 
     public Transaction(UUID accountId, TransactionType type, BigDecimal amount,
-                       BigDecimal balanceAfter, UUID counterpartyAccountId) {
+                       BigDecimal balanceAfter, UUID counterpartyAccountId, String description) {
         this.accountId = accountId;
         this.type = type;
         this.amount = Money.normalize(amount);
         this.balanceAfter = Money.normalize(balanceAfter);
         this.counterpartyAccountId = counterpartyAccountId;
+        this.description = normalizeDescription(description);
         this.createdAt = Instant.now();
+    }
+
+    /**
+     * Forma canonica da descricao: espacos nas pontas removidos e texto em branco
+     * tratado como ausente ({@code null}). E o que vai para o banco e tambem o que
+     * entra na impressao digital de idempotencia — assim {@code " aluguel "} e
+     * {@code "aluguel"} sao a mesma descricao, e {@code ""} e o mesmo que nao mandar.
+     */
+    static String normalizeDescription(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.strip();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public UUID getId() {
@@ -115,6 +147,10 @@ public class Transaction {
 
     public UUID getCounterpartyAccountId() {
         return counterpartyAccountId;
+    }
+
+    public String getDescription() {
+        return description;
     }
 
     public Instant getCreatedAt() {

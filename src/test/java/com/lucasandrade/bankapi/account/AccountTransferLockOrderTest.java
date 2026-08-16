@@ -60,12 +60,12 @@ class AccountTransferLockOrderTest {
 
         // Sentido "menor -> maior": a ordem natural ja seria a canonica.
         clearInvocations(repository);
-        service.transfer(lower, null, new TransferRequest(higher, TEN));
+        service.transfer(lower, null, new TransferRequest(higher, TEN, null));
         assertLoadOrder(lower, higher);
 
         // Sentido inverso: e aqui que a ordem natural (origem primeiro) divergiria.
         clearInvocations(repository);
-        service.transfer(higher, null, new TransferRequest(lower, TEN));
+        service.transfer(higher, null, new TransferRequest(lower, TEN, null));
         assertLoadOrder(lower, higher);
     }
 
@@ -78,7 +78,7 @@ class AccountTransferLockOrderTest {
         UUID lower = first.compareTo(second) < 0 ? first : second;
         UUID higher = lower.equals(first) ? second : first;
 
-        service.transfer(higher, null, new TransferRequest(lower, TEN));
+        service.transfer(higher, null, new TransferRequest(lower, TEN, null));
 
         assertThat(service.findById(higher).balance()).isEqualByComparingTo("90.00");
         assertThat(service.findById(lower).balance()).isEqualByComparingTo("110.00");
@@ -93,7 +93,7 @@ class AccountTransferLockOrderTest {
     /** Cria uma conta com saldo suficiente para transferir. */
     private UUID accountWithBalance(String ownerName, String document) {
         AccountResponse account = service.create(new CreateAccountRequest(ownerName, document));
-        service.deposit(account.id(), null, new MoneyOperationRequest(new BigDecimal("100.00")));
+        service.deposit(account.id(), null, new MoneyOperationRequest(new BigDecimal("100.00"), null));
         return account.id();
     }
 }

@@ -41,6 +41,16 @@ public class AppUser {
         this.createdAt = Instant.now();
     }
 
+    /**
+     * Troca a senha do usuario. Recebe o hash ja calculado — a entidade nunca ve
+     * (nem guarda) a senha em texto puro; quem hasheia e o service, com o
+     * {@code PasswordEncoder}. Conferir a senha atual tambem e responsabilidade
+     * do service, que tem o encoder: aqui so se aplica a decisao ja tomada.
+     */
+    public void changePassword(String newPasswordHash) {
+        this.passwordHash = newPasswordHash;
+    }
+
     public UUID getId() {
         return id;
     }

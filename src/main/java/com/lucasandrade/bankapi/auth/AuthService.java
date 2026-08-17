@@ -1,9 +1,11 @@
 package com.lucasandrade.bankapi.auth;
 
 import com.lucasandrade.bankapi.auth.dto.AuthResponse;
+import com.lucasandrade.bankapi.auth.dto.ChangePasswordRequest;
 import com.lucasandrade.bankapi.auth.dto.LoginRequest;
 import com.lucasandrade.bankapi.auth.dto.RegisterRequest;
 import com.lucasandrade.bankapi.shared.BusinessException;
+import com.lucasandrade.bankapi.shared.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -71,6 +73,41 @@ public class AuthService {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password()));
         return tokenFor(request.username());
+    }
+
+    /**
+     * Troca a senha do usuario autenticado, mediante a senha atual.
+     *
+     * <p>A senha atual e conferida com o {@code PasswordEncoder} (comparacao com o
+     * hash guardado), nunca com o {@code AuthenticationManager}: aqui o usuario JA
+     * esta autenticado pelo token, o que se pede e uma reautenticacao — e senha
+     * atual errada e um <b>422</b> ({@link BusinessException}), nao 401. Um 401
+     * diria ao cliente "seu token nao vale", e ele descartaria um token valido e
+     * mandaria o usuario para o login; a mensagem certa e "o que voce digitou como
+     * senha atual esta errado, tente de novo".
+     *
+     * <p>Nova senha igual a atual e recusada: "trocar" para a mesma senha nao troca
+     * nada, e quem pede a troca (senha vazada, por exemplo) precisa que a antiga
+     * deixe de valer.
+     *
+     * <p>Consequencia do JWT stateless que vale registrar: tokens ja emitidos
+     * continuam validos ate expirarem ({@code security.jwt.expiration-minutes}) —
+     * a troca invalida a senha antiga para novos logins, nao as sessoes em curso.
+     * Invalidar tokens emitidos antes da troca pediria estado no servidor (ou um
+     * {@code passwordChangedAt} conferido a cada requisicao), decisao separada.
+     */
+    @Transactional
+    public void changePassword(String username, ChangePasswordRequest request) {
+        AppUser user = repository.findByUsername(username)
+                .orElseThrow(() -> new NotFoundException("Usuario nao encontrado: " + username));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BusinessException("Senha atual incorreta");
+        }
+        if (request.currentPassword().equals(request.newPassword())) {
+            throw new BusinessException("Nova senha deve ser diferente da senha atual");
+        }
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+        repository.save(user);
     }
 
     private AuthResponse tokenFor(String username) {

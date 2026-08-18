@@ -4,6 +4,7 @@ import com.lucasandrade.bankapi.auth.dto.AuthResponse;
 import com.lucasandrade.bankapi.auth.dto.ChangePasswordRequest;
 import com.lucasandrade.bankapi.auth.dto.LoginRequest;
 import com.lucasandrade.bankapi.auth.dto.RegisterRequest;
+import com.lucasandrade.bankapi.auth.dto.UserProfileResponse;
 import com.lucasandrade.bankapi.shared.BusinessException;
 import com.lucasandrade.bankapi.shared.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -73,6 +74,24 @@ public class AuthService {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password()));
         return tokenFor(request.username());
+    }
+
+    /**
+     * Perfil do usuario autenticado. O username vem do token (subject), nunca da
+     * URL — nao existe "perfil de outro usuario" nesta API. Somente leitura, por
+     * isso {@code readOnly}: o Hibernate pula o dirty-check e o banco pode
+     * otimizar a transacao.
+     *
+     * <p>Um token valido cujo usuario sumiu do banco ja e barrado no
+     * {@code JwtAuthenticationFilter} (401), entao o {@code orElseThrow} aqui e a
+     * rede de seguranca para o caso de a rota ser chamada com um principal que o
+     * filtro nao produziu — mesma escolha do {@link #changePassword}.
+     */
+    @Transactional(readOnly = true)
+    public UserProfileResponse profile(String username) {
+        AppUser user = repository.findByUsername(username)
+                .orElseThrow(() -> new NotFoundException("Usuario nao encontrado: " + username));
+        return UserProfileResponse.from(user);
     }
 
     /**

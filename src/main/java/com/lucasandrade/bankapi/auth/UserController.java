@@ -1,9 +1,11 @@
 package com.lucasandrade.bankapi.auth;
 
 import com.lucasandrade.bankapi.auth.dto.ChangePasswordRequest;
+import com.lucasandrade.bankapi.auth.dto.UserProfileResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +30,16 @@ public class UserController {
 
     public UserController(AuthService service) {
         this.service = service;
+    }
+
+    /**
+     * Perfil do usuario autenticado ("quem sou eu?"): id, username e data de
+     * cadastro. E o que um cliente chama logo apos o login para saber quem o
+     * token representa — nada de senha, hash ou token na resposta.
+     */
+    @GetMapping
+    public ResponseEntity<UserProfileResponse> me(Authentication authentication) {
+        return ResponseEntity.ok(service.profile(authentication.getName()));
     }
 
     /**

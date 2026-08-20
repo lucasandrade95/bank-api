@@ -92,7 +92,7 @@ class AccountTransferLockOrderTest {
 
     /** Cria uma conta com saldo suficiente para transferir. */
     private UUID accountWithBalance(String ownerName, String document) {
-        AccountResponse account = service.create(new CreateAccountRequest(ownerName, document));
+        AccountResponse account = service.create(null, new CreateAccountRequest(ownerName, document));
         service.deposit(account.id(), null, new MoneyOperationRequest(new BigDecimal("100.00"), null));
         return account.id();
     }

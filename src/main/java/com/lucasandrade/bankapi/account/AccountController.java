@@ -45,9 +45,11 @@ public class AccountController {
     }
 
     @PostMapping
-    public ResponseEntity<AccountResponse> create(@Valid @RequestBody CreateAccountRequest request,
+    public ResponseEntity<AccountResponse> create(@RequestHeader(value = "Idempotency-Key", required = false)
+                                                  @Size(max = IdempotencyRecord.KEY_MAX_LENGTH, message = "Idempotency-Key deve ter no maximo 255 caracteres") String idempotencyKey,
+                                                  @Valid @RequestBody CreateAccountRequest request,
                                                   UriComponentsBuilder uriBuilder) {
-        AccountResponse created = service.create(request);
+        AccountResponse created = service.create(idempotencyKey, request);
         URI location = uriBuilder.path("/api/v1/accounts/{id}")
                 .buildAndExpand(created.id())
                 .toUri();

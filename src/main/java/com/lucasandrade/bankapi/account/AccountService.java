@@ -72,18 +72,31 @@ public class AccountService {
      * <p>O {@code saveAndFlush} e necessario para o INSERT (e a violacao) acontecerem
      * aqui dentro do {@code try}, e nao la no commit da transacao, fora do alcance
      * deste catch.
+     *
+     * <p>A criacao aceita {@code Idempotency-Key} como as operacoes com dinheiro, e
+     * por um motivo especifico dela: sem a chave, o retry apos timeout e
+     * <b>indistinguivel de um CPF duplicado</b>. O cliente cria a conta, o timeout
+     * engole o 201, ele reenvia — e a restricao UNIQUE do documento responde 422
+     * "ja existe conta", sem devolver QUAL conta nem dizer que foi ele mesmo quem a
+     * criou. Com a chave, o reenvio devolve a resposta original (201 com o id da
+     * conta), e o 422 volta a significar so o que diz: outra conta ja usa este CPF.
+     * A falha continua nao consumindo a chave (rollback desfaz o registro junto),
+     * entao um 422 legitimo pode ser corrigido e retentado com a mesma chave.
      */
     @Transactional
-    public AccountResponse create(CreateAccountRequest request) {
-        if (repository.existsByDocument(request.document())) {
-            throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
-        }
-        Account account = new Account(request.ownerName(), request.document());
-        try {
-            return AccountResponse.from(repository.saveAndFlush(account));
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
-        }
+    public AccountResponse create(String idempotencyKey, CreateAccountRequest request) {
+        String requestData = requestData("create", request.document(), request.ownerName());
+        return idempotency.execute(idempotencyKey, requestData, AccountResponse.class, () -> {
+            if (repository.existsByDocument(request.document())) {
+                throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
+            }
+            Account account = new Account(request.ownerName(), request.document());
+            try {
+                return AccountResponse.from(repository.saveAndFlush(account));
+            } catch (DataIntegrityViolationException e) {
+                throw new BusinessException(DUPLICATE_DOCUMENT_MESSAGE);
+            }
+        });
     }
 
     @Transactional(readOnly = true)
@@ -343,6 +356,19 @@ public class AccountService {
                 .append(Money.normalize(amount));
         for (Object extra : extras) {
             sb.append('|').append(extra);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Variante para operacoes sem valor monetario (criacao de conta): a identidade
+     * do pedido e a concatenacao literal das partes — nao ha dinheiro a normalizar.
+     * Reusar a chave com outro documento ou outro nome de titular e outro pedido (409).
+     */
+    private static String requestData(String operation, Object... parts) {
+        StringBuilder sb = new StringBuilder(operation);
+        for (Object part : parts) {
+            sb.append('|').append(part);
         }
         return sb.toString();
     }
